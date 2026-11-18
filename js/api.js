@@ -26,6 +26,10 @@ export const ORDER = {
   quiz_questions: ['created_at', true],
   quiz_answers: ['created_at', true],
   special_days: ['day', true],
+  messages: ['created_at', false],
+  tot_questions: ['created_at', true],
+  tot_answers: ['created_at', true],
+  memory_scores: ['created_at', false],
 };
 
 function fail(error) {
@@ -81,10 +85,17 @@ const real = {
   async rpc(name, args = {}) { const { data, error } = await sb.rpc(name, args); fail(error); return data; },
   async upsert(table, row, onConflict) { const { error } = await sb.from(table).upsert(row, { onConflict }); fail(error); },
   async removeWhere(table, col, val) { const { error } = await sb.from(table).delete().eq(col, val); fail(error); },
-  async upload(blob) {
-    const path = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.jpg`;
-    const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
+  async upload(blob, ext = 'jpg', type = 'image/jpeg') {
+    const path = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType: type, cacheControl: '31536000' });
     fail(error); return path;
+  },
+  // Gerçek zamanlı: tablo değişince cb çağrılır; geri dönen fonksiyon dinlemeyi bırakır
+  subscribe(table, cb) {
+    const ch = sb.channel(`rt-${table}-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, p => cb(p))
+      .subscribe();
+    return () => sb.removeChannel(ch);
   },
   async signedUrls(paths) {
     if (!paths.length) return {};
@@ -148,11 +159,25 @@ const store = {
     { id: 'q3', author: RABIA, question: 'Hangi şehirde yaşamak isterim?', options: ['İstanbul', 'İzmir', 'Paris', 'Roma'], answer: 3, created_at: day(-1) },
   ],
   quiz_answers: [{ id: 'qa1', question_id: 'q1', author: RABIA, choice: 2, correct: true, created_at: day(-1) }],
+  messages: [
+    { id: 'ms1', author: RABIA, body: 'Günaydın sevgilim, bugün aklımdan hiç çıkmadın', photo: null, audio: null, audio_secs: null, hearted: true, read_at: day(-0.9), created_at: day(-1) },
+    { id: 'ms2', author: EMRE, body: 'Ben de seni çok düşündüm. Akşam görüşelim mi?', photo: null, audio: null, audio_secs: null, hearted: false, read_at: day(-0.8), created_at: day(-0.95) },
+    { id: 'ms3', author: RABIA, body: 'Olur, dört gözle bekliyorum', photo: null, audio: null, audio_secs: null, hearted: false, read_at: null, created_at: day(-0.02) },
+  ],
+  tot_questions: [],
+  tot_answers: [
+    { id: 'ta1', author: RABIA, qkey: 'b0', pick: 0, created_at: day(-1) },
+    { id: 'ta2', author: RABIA, qkey: 'b1', pick: 1, created_at: day(-1) },
+    { id: 'ta3', author: EMRE, qkey: 'b0', pick: 0, created_at: day(-1) },
+  ],
+  memory_scores: [{ id: 'mm1', author: RABIA, seconds: 48, moves: 14, pairs: 6, created_at: day(-1) }],
   special_days: [{ id: 'sd1', author: EMRE, title: 'Rabia’nın doğum günü', day: '2001-03-14', yearly: true, note: '', created_at: day(-3) }],
 };
 function localDay(n) { const d = new Date(Date.now() + n * 864e5); return new Date(+d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
 const DEMO_RPC = {
   touch_seen: () => day(-1.5),
+  toggle_heart: ({ mid }) => { const m = store.messages.find(x => x.id === mid && x.author !== EMRE); if (m) m.hearted = !m.hearted; return m?.hearted ?? null; },
+  mark_messages_read: () => { store.messages.forEach(m => { if (m.author !== EMRE && !m.read_at) m.read_at = new Date().toISOString(); }); },
   set_my_notify: ({ prefs }) => { store.profiles[0].notify = prefs; },
   push_test: () => { throw new Error('Demo modunda bildirim gönderilmez'); },
   locked_letters: () => store.letters.filter(l => l.recipient === EMRE && l.open_at && new Date(l.open_at) > new Date()).map(({ body, ...l }) => l),
@@ -193,14 +218,20 @@ const demo = {
     if (table === 'flowers' && store.flowers.some(f => f.author === EMRE && f.day === row.day)) throw new Error('Bugünün çiçeğini zaten gönderdin');
     const r = { id: id(), author: EMRE, created_at: new Date().toISOString(), ...row };
     if (table === 'memories') r.photos ??= [];
+    if (table === 'messages') Object.assign(r, { body: null, photo: null, audio: null, audio_secs: null, hearted: false, read_at: null, ...row });
     store[table].push(r); return r;
   },
   async update(table, rid, patch) { const r = store[table].find(x => x.id === rid); Object.assign(r, patch); return r; },
   async remove(table, rid) { store[table] = store[table].filter(r => r.id !== rid); },
   async rpc(name, args = {}) { return structuredClone(DEMO_RPC[name](args) ?? null); },
-  async upsert() {},
+  async upsert(table, row) {
+    if (table !== 'tot_answers') return;
+    const ex = store.tot_answers.find(a => a.author === EMRE && a.qkey === row.qkey);
+    ex ? (ex.pick = row.pick) : store.tot_answers.push({ id: id(), author: EMRE, created_at: new Date().toISOString(), ...row });
+  },
   async removeWhere() {},
   async upload(blob) { const p = id(); blobs[p] = URL.createObjectURL(blob); return p; },
+  subscribe() { return () => {}; },
   async signedUrls(paths) { const m = {}; paths.forEach(p => { if (blobs[p]) m[p] = blobs[p]; }); return m; },
   async removeFiles() {},
 };

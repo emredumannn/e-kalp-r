@@ -70,9 +70,11 @@ const CATEGORY: Record<string, string> = {
   coupons: 'fun', coupons_used: 'fun', quiz_questions: 'fun',
   memories: 'shares', photos: 'shares', reasons: 'shares', moods: 'shares', firsts: 'shares',
   todos: 'shares', songs: 'shares', places: 'shares', special_days: 'shares',
+  messages: 'messages', memory_scores: 'fun',
 };
 // Aynı türden bildirimler arasında en az bu kadar saniye
-const THROTTLE: Record<string, number> = { photos: 120, thoughts: 3 * 3600, moods: 1800, prayer_logs: 300 };
+const THROTTLE: Record<string, number> = { photos: 120, thoughts: 3 * 3600, moods: 1800, prayer_logs: 300, messages: 8, memory_scores: 600 };
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const short = (s: string | null | undefined, n = 90) => !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s;
 const fmtDate = (d: string) => new Date(d).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
 
@@ -90,7 +92,7 @@ function message(kind: string, r: Record<string, any>, name: (id: string) => str
     case 'moods': return { title: `${who} bugün ${r.emoji}`, body: short(r.note), url: '#/' };
     case 'firsts': return { title: `${who} yeni bir ilk ekledi`, body: short(r.title), url: '#/ilkler' };
     case 'todos': return { title: `${who} hayal listenize ekledi`, body: short(r.text), url: '#/yapacaklar' };
-    case 'songs': return { title: `${who} bir şarkı ekledi`, body: short(`${r.title}${r.artist ? ' · ' + r.artist : ''}`), url: '#/sarkilar' };
+    case 'songs': return { title: `${who} bir şarkı ekledi`, body: short(`${r.title}${r.artist ? ' · ' + r.artist : ''}`), url: '#/muzik' };
     case 'places': return { title: `${who} haritaya bir yer ekledi`, body: short(r.name), url: '#/harita' };
     case 'thoughts': return { title: `${who} şu an seni düşünüyor`, body: 'Sen de ona bir kalp gönder', url: '#/' };
     case 'flowers': return { title: `${who} sana bir ${FLOWERS[r.kind] ?? 'çiçek'} gönderdi`, body: short(r.note) || 'Bahçeniz büyüyor', url: '#/bahce' };
@@ -98,6 +100,8 @@ function message(kind: string, r: Record<string, any>, name: (id: string) => str
     case 'coupons_used': return { to: r.author, actor: r.recipient, title: `${name(r.recipient)} kuponunu kullandı`, body: short(r.title), url: '#/kuponlar' };
     case 'quiz_questions': return { title: `${who} sana yeni bir soru sordu`, body: 'Onu ne kadar tanıyorsun?', url: '#/test' };
     case 'special_days': return { title: `${who} bir özel gün ekledi`, body: short(r.title), url: '#/ozel-gunler' };
+    case 'messages': return { title: who, body: r.body ? short(r.body, 140) : r.photo ? 'Bir fotoğraf gönderdi' : 'Sesli mesaj gönderdi', url: '#/fisilti' };
+    case 'memory_scores': return { title: `${who} hafıza oyununu ${mmss(r.seconds)}’de bitirdi`, body: 'Rekoru kırabilir misin?', url: '#/hafiza' };
     case 'test': return { to: r.author, title: 'Bildirimler çalışıyor', body: 'Artık birbirinizden haber alacaksınız.', url: '#/' };
   }
   return null;

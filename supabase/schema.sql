@@ -228,6 +228,47 @@ create table if not exists public.special_days (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Fısıltı (mesajlaşma) ----------
+create table if not exists public.messages (
+  id         uuid primary key default gen_random_uuid(),
+  author     uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  body       text,
+  photo      text,
+  audio      text,
+  audio_secs int,
+  hearted    boolean not null default false,
+  read_at    timestamptz,
+  created_at timestamptz not null default now(),
+  check (body is not null or photo is not null or audio is not null)
+);
+
+-- ---------- Bu mu, o mu? ----------
+create table if not exists public.tot_questions (
+  id         uuid primary key default gen_random_uuid(),
+  author     uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  a          text not null,
+  b          text not null,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.tot_answers (
+  id         uuid primary key default gen_random_uuid(),
+  author     uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  qkey       text not null,           -- hazır sorular "b12", eklenenler "c<uuid>"
+  pick       int  not null check (pick in (0, 1)),
+  created_at timestamptz not null default now(),
+  unique (author, qkey)
+);
+
+-- ---------- Fotoğraflarla hafıza oyunu ----------
+create table if not exists public.memory_scores (
+  id         uuid primary key default gen_random_uuid(),
+  author     uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  seconds    int not null,
+  moves      int not null,
+  pairs      int not null,
+  created_at timestamptz not null default now()
+);
+
 -- =====================================================================
 --  Güvenlik (RLS)
 -- =====================================================================
@@ -236,7 +277,8 @@ declare t text;
 begin
   foreach t in array array['profiles','site_settings','memories','letters','photos','reasons','prayers',
                            'prayer_logs','moods','firsts','todos','songs','places','surprises','greetings',
-                           'thoughts','flowers','coupons','quiz_questions','quiz_answers','special_days'] loop
+                           'thoughts','flowers','coupons','quiz_questions','quiz_answers','special_days',
+                           'messages','tot_questions','tot_answers','memory_scores'] loop
     execute format('alter table public.%I enable row level security', t);
   end loop;
 end $$;
@@ -258,7 +300,8 @@ do $$
 declare t text;
 begin
   foreach t in array array['memories','photos','reasons','prayers','prayer_logs','moods','firsts','todos','songs','places',
-                           'greetings','thoughts','flowers','coupons','special_days'] loop
+                           'greetings','thoughts','flowers','coupons','special_days',
+                           'messages','tot_questions','tot_answers','memory_scores'] loop
     execute format('drop policy if exists "%1$s_read"   on public.%1$I', t);
     execute format('drop policy if exists "%1$s_insert" on public.%1$I', t);
     execute format('drop policy if exists "%1$s_update" on public.%1$I', t);
@@ -367,6 +410,29 @@ begin
   return json_build_object('correct', ok, 'choice', ch, 'answer', q.answer);
 end;
 $$;
+
+-- Fısıltı: karşıdakinin mesajına kalp bırak / okundu işaretle
+create or replace function public.toggle_heart(mid uuid)
+returns boolean language sql security definer set search_path = public as $$
+  update public.messages set hearted = not hearted
+  where id = mid and author <> auth.uid() and public.is_member()
+  returning hearted;
+$$;
+create or replace function public.mark_messages_read()
+returns void language sql security definer set search_path = public as $$
+  update public.messages set read_at = now()
+  where author <> auth.uid() and read_at is null and public.is_member();
+$$;
+grant execute on function public.toggle_heart(uuid)      to authenticated;
+grant execute on function public.mark_messages_read()    to authenticated;
+
+-- Mesajların anında gelmesi için gerçek zamanlı yayın
+do $$
+begin
+  alter publication supabase_realtime add table public.messages;
+exception when duplicate_object then null;
+          when undefined_object then null;
+end $$;
 
 grant execute on function public.mark_surprise_shown(uuid) to authenticated;
 grant execute on function public.use_coupon(uuid)          to authenticated;
@@ -496,7 +562,8 @@ do $$
 declare t text;
 begin
   foreach t in array array['memories','letters','photos','reasons','prayer_logs','moods','firsts','todos','songs',
-                           'places','thoughts','flowers','coupons','quiz_questions','special_days'] loop
+                           'places','thoughts','flowers','coupons','quiz_questions','special_days',
+                           'messages','memory_scores'] loop
     execute format('drop trigger if exists push_after_insert on public.%I', t);
     execute format('create trigger push_after_insert after insert on public.%I for each row execute function public.push_notify()', t);
   end loop;
