@@ -3,6 +3,9 @@
 export const SUPABASE_URL = 'https://zjsxafxfayzdrvscqoss.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_nhDuuTnuhXConqUxlooU1g_Xdi_2pYo';
 
+// Telefon bildirimleri için açık anahtar (gizli eşi sadece Supabase'te durur)
+export const VAPID_PUBLIC_KEY = 'BFFdiazVfnTeJYuYFkRESt_ZeFxX0GAsN00XurOMhILykcyUKMSfB7o5pq-7FYnVE2l1hcjg2s5asUGtcaRczQQ';
+
 // İlk görüş anı (Türkiye saati)
 export const START = '2026-11-07T19:00:00+03:00';
 

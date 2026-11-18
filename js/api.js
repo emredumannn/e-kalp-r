@@ -1,7 +1,7 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { PRAYERS } from './dualar.js';
 
-export const DEMO = !SUPABASE_URL || !SUPABASE_ANON_KEY;
+export const DEMO = !SUPABASE_URL || !SUPABASE_ANON_KEY || new URLSearchParams(location.search).has('demo');
 const BUCKET = 'photos';
 let sb = null;
 
@@ -79,6 +79,8 @@ const real = {
     if (!data?.length) throw new Error('Bunu silme yetkin yok');
   },
   async rpc(name, args = {}) { const { data, error } = await sb.rpc(name, args); fail(error); return data; },
+  async upsert(table, row, onConflict) { const { error } = await sb.from(table).upsert(row, { onConflict }); fail(error); },
+  async removeWhere(table, col, val) { const { error } = await sb.from(table).delete().eq(col, val); fail(error); },
   async upload(blob) {
     const path = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.jpg`;
     const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' });
@@ -150,6 +152,9 @@ const store = {
 };
 function localDay(n) { const d = new Date(Date.now() + n * 864e5); return new Date(+d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
 const DEMO_RPC = {
+  touch_seen: () => day(-1.5),
+  set_my_notify: ({ prefs }) => { store.profiles[0].notify = prefs; },
+  push_test: () => { throw new Error('Demo modunda bildirim gönderilmez'); },
   locked_letters: () => store.letters.filter(l => l.recipient === EMRE && l.open_at && new Date(l.open_at) > new Date()).map(({ body, ...l }) => l),
   mark_letter_read: ({ letter_id }) => { const l = store.letters.find(x => x.id === letter_id); if (l && !l.read_at) l.read_at = new Date().toISOString(); },
   mark_surprise_shown: ({ sid }) => { const s = store.surprises.find(x => x.id === sid); if (s) s.shown_at = new Date().toISOString(); },
@@ -193,6 +198,8 @@ const demo = {
   async update(table, rid, patch) { const r = store[table].find(x => x.id === rid); Object.assign(r, patch); return r; },
   async remove(table, rid) { store[table] = store[table].filter(r => r.id !== rid); },
   async rpc(name, args = {}) { return structuredClone(DEMO_RPC[name](args) ?? null); },
+  async upsert() {},
+  async removeWhere() {},
   async upload(blob) { const p = id(); blobs[p] = URL.createObjectURL(blob); return p; },
   async signedUrls(paths) { const m = {}; paths.forEach(p => { if (blobs[p]) m[p] = blobs[p]; }); return m; },
   async removeFiles() {},

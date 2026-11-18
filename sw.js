@@ -1,6 +1,6 @@
 // Uygulama kabuğunu önbellekler. Supabase istekleri her zaman ağdan gider.
 // Siteyi güncellediğinde VERSION'u bir artır.
-const VERSION = 'ekalpr-v5';
+const VERSION = 'ekalpr-v6';
 const SHELL = [
   './', './index.html', './css/style.css', './manifest.webmanifest',
   './js/app.js', './js/api.js', './js/config.js', './js/dualar.js', './js/icons.js',
@@ -39,4 +39,36 @@ self.addEventListener('fetch', e => {
       return res;
     }));
   }
+});
+
+// ---------------------------------------------------------------- telefon bildirimleri
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  e.waitUntil((async () => {
+    await self.registration.showNotification(d.title || 'E ❤ R', {
+      body: d.body || '',
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: d.tag || undefined,
+      renotify: !!d.tag,
+      data: { url: d.url || './' },
+    });
+    try { await self.navigator.setAppBadge?.(1); } catch {}
+  })());
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || './', self.registration.scope).href;
+  e.waitUntil((async () => {
+    const wins = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of wins) {
+      if (c.url.startsWith(self.registration.scope)) {
+        c.postMessage({ nav: new URL(url).hash || '#/' });
+        return c.focus();
+      }
+    }
+    return clients.openWindow(url);
+  })());
 });

@@ -403,6 +403,132 @@ create policy "photos_obj_delete" on storage.objects for delete to authenticated
   using (bucket_id = 'photos' and (owner = auth.uid() or public.is_admin()));
 
 -- =====================================================================
+--  "Senin için yeni": son giriş zamanı
+-- =====================================================================
+alter table public.profiles add column if not exists last_seen_at timestamptz;
+alter table public.profiles add column if not exists notify jsonb not null default '{}';
+
+create or replace function public.touch_seen()
+returns timestamptz language plpgsql security definer set search_path = public as $$
+declare prev timestamptz;
+begin
+  select last_seen_at into prev from public.profiles where id = auth.uid();
+  update public.profiles set last_seen_at = now() where id = auth.uid();
+  return prev;
+end;
+$$;
+
+-- Kişi kendi bildirim tercihlerini değiştirir (ör. {"thoughts": false})
+create or replace function public.set_my_notify(prefs jsonb)
+returns void language sql security definer set search_path = public as $$
+  update public.profiles set notify = coalesce(prefs, '{}'::jsonb) where id = auth.uid();
+$$;
+
+grant execute on function public.touch_seen()          to authenticated;
+grant execute on function public.set_my_notify(jsonb)  to authenticated;
+
+-- =====================================================================
+--  Telefon bildirimleri
+-- =====================================================================
+create extension if not exists pg_net;
+
+-- Her telefonun bildirim adresi
+create table if not exists public.push_subscriptions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  endpoint   text not null unique,
+  p256dh     text not null,
+  auth       text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+drop policy if exists "push_sub_own" on public.push_subscriptions;
+create policy "push_sub_own" on public.push_subscriptions for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid() and public.is_member());
+grant select, insert, update, delete on public.push_subscriptions to authenticated;
+
+-- Sunucu ayarları ve anahtarlar: SADECE sunucu okur (uygulamaya kapalı)
+create table if not exists public.push_config (
+  id             int primary key default 1 check (id = 1),
+  function_url   text,
+  site_url       text,
+  webhook_secret text,
+  vapid_public   text,
+  vapid_private  text,
+  vapid_subject  text
+);
+alter table public.push_config enable row level security;
+revoke all on public.push_config from anon, authenticated;
+
+-- Aynı türden bildirimlerin üst üste gelmesini engellemek için kayıt
+create table if not exists public.push_log (
+  id        bigint generated always as identity primary key,
+  recipient uuid not null,
+  kind      text not null,
+  sent_at   timestamptz not null default now()
+);
+alter table public.push_log enable row level security;
+revoke all on public.push_log from anon, authenticated;
+
+-- Bir şey eklenince bildirim sunucusunu çağır
+create or replace function public.push_notify()
+returns trigger language plpgsql security definer set search_path = public, extensions as $$
+declare u text; s text; kind text := TG_TABLE_NAME;
+begin
+  if TG_OP = 'UPDATE' then
+    if TG_TABLE_NAME = 'coupons' and old.used_at is null and new.used_at is not null then kind := 'coupons_used';
+    else return new; end if;
+  end if;
+  select function_url, webhook_secret into u, s from public.push_config where id = 1;
+  if u is null then return new; end if;
+  perform net.http_post(
+    url := u,
+    body := jsonb_build_object('table', kind, 'record', to_jsonb(new)),
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', s),
+    timeout_milliseconds := 5000);
+  return new;
+exception when others then
+  return new;   -- bildirim gitmese bile kayıt asla engellenmez
+end;
+$$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['memories','letters','photos','reasons','prayer_logs','moods','firsts','todos','songs',
+                           'places','thoughts','flowers','coupons','quiz_questions','special_days'] loop
+    execute format('drop trigger if exists push_after_insert on public.%I', t);
+    execute format('create trigger push_after_insert after insert on public.%I for each row execute function public.push_notify()', t);
+  end loop;
+end $$;
+drop trigger if exists push_after_update on public.coupons;
+create trigger push_after_update after update on public.coupons for each row execute function public.push_notify();
+-- Not: açılış sürprizleri bilerek bildirim göndermez (sürpriz bozulmasın).
+
+-- "Kendime deneme bildirimi gönder"
+create or replace function public.push_test()
+returns void language plpgsql security definer set search_path = public, extensions as $$
+declare u text; s text;
+begin
+  if not public.is_member() then raise exception 'Yetki yok'; end if;
+  select function_url, webhook_secret into u, s from public.push_config where id = 1;
+  if u is null then raise exception 'Bildirim sunucusu henüz kurulmadı'; end if;
+  perform net.http_post(
+    url := u,
+    body := jsonb_build_object('table', 'test', 'record', jsonb_build_object('author', auth.uid())),
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', s),
+    timeout_milliseconds := 5000);
+end;
+$$;
+grant execute on function public.push_test() to authenticated;
+
+-- Bildirim sunucusunun (service_role) okuyup yazabileceği tablolar
+grant usage on schema public to service_role;
+grant select on public.profiles, public.push_config to service_role;
+grant select, insert, delete on public.push_subscriptions, public.push_log to service_role;
+grant usage, select on all sequences in schema public to service_role;
+
+-- =====================================================================
 --  Hazır dualar (sadece ilk kurulumda eklenir; sonra Admin Paneli'nden düzenlenir)
 -- =====================================================================
 insert into public.prayers (cat, title, note, ar, tr, body, target, sort, author)

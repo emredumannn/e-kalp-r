@@ -1,5 +1,5 @@
 import { api, DEMO } from './api.js';
-import { START, TOGETHER } from './config.js';
+import { START, TOGETHER, VAPID_PUBLIC_KEY } from './config.js';
 import { CATEGORIES } from './dualar.js';
 import { ic, flower, FLOWERS } from './icons.js';
 
@@ -17,7 +17,7 @@ const DEFAULTS = {
   jarTitle: 'Seni neden seviyorum',
   prayerBanner: 'Allah bizi her türlü kötü gözden ve sözden korusun',
 };
-const state = { me: null, admin: false, people: {}, partner: null, urls: {}, cache: {}, s: { ...DEFAULTS } };
+const state = { me: null, admin: false, people: {}, partner: null, urls: {}, cache: {}, s: { ...DEFAULTS }, since: null };
 const nameOf = id => id ? state.people[id]?.name ?? '…' : 'Hazır';
 const partnerName = () => state.partner?.name ?? 'Sevgilin';
 const isMine = row => row.author === state.me.id;
@@ -427,10 +427,14 @@ async function enter(user) {
   state.admin = !!me.is_admin;
   state.people = Object.fromEntries(profs.map(p => [p.id, p]));
   state.partner = profs.find(p => p.id !== user.id) ?? null;
+  try { const prev = await api.rpc('touch_seen'); state.since = prev ? new Date(prev) : null; } catch {}
+  try { navigator.clearAppBadge?.(); } catch {}
   shell();
   addEventListener('hashchange', route);
   await route();
   setInterval(tick, 1000);
+  refreshBell();
+  syncPush();
   await showSurprises();
   const ms = isMilestoneToday();
   if (ms && sessionStorage.getItem('ms') !== todayISO()) {
@@ -476,12 +480,14 @@ function shell() {
     <header class="top">
       <a href="#/" class="brand">${brand(state.s.title)}</a>
       <span id="mini"></span>
+      <button class="icon-btn bell" id="bell" aria-label="Yenilikler">${ic('bell')}<span class="bell-n" hidden></span></button>
       ${state.admin ? `<a class="icon-btn" href="#/admin" aria-label="Admin paneli">${ic('shield')}</a>` : ''}
       <button class="icon-btn" id="settings" aria-label="Hesap">${ic('user')}</button>
     </header>
     <main id="view"></main>
     <nav class="tabs">${TABS.map(([h, i, t]) => `<a href="#/${h}" data-tab="${h}">${ic(i)}<span>${t}</span></a>`).join('')}</nav>`;
   $('#settings').onclick = settings;
+  $('#bell').onclick = openBell;
   tick();
 }
 
@@ -571,6 +577,8 @@ async function home(v) {
     ...mems.flatMap(m => m.photos.map(path => ({ path, cap: m.title, date: m.happened_on })))];
   const daily = dailyPick(pool);
   await loadUrls([...(daily ? [daily.path] : []), ...mems.slice(0, 3).flatMap(m => m.photos.slice(0, 1))]);
+  const [activity, ps] = await Promise.all([loadActivity(true).catch(() => []), pushState().catch(() => 'unsupported')]);
+  const fresh = freshItems(activity);
 
   const notes = [
     ...forMe.map(l => `<p>${ic('moon')}<span><b>${esc(partnerName())}</b> senin için ${esc(l.prayer_title)} okudu${l.count > 1 ? ` · ${l.count} kez` : ''} <span class="muted">${ago(l.created_at)}</span></span></p>`),
@@ -601,6 +609,23 @@ async function home(v) {
       <p class="together" data-c="tog"></p>
       <p class="next" data-c="next"></p>
     </section>
+
+    ${fresh.length && !state.newsClosed ? `<section class="card news" id="news">
+      <div class="sec-title">${ic('sparkle')}<h3>Sen yokken ${esc(partnerName())}…</h3><button class="icon-btn" id="newsX" aria-label="Kapat">${ic('x')}</button></div>
+      ${fresh.slice(0, 6).map(i => actRow(i)).join('')}
+      ${fresh.length > 6 ? `<button class="link" id="newsAll">ve ${fresh.length - 6} şey daha</button>` : ''}
+    </section>` : ''}
+
+    ${ps === 'off' && !dismissed('push') ? `<section class="card prompt">
+      <span class="list-ic">${ic('bell')}</span>
+      <div class="grow"><b>Bildirimleri aç</b><p class="muted small">${esc(partnerName())} sana bir şey gönderdiğinde telefonuna gelsin.</p>
+        <div class="prompt-btns"><button class="btn small" id="pushOn">Aç</button><button class="link" id="pushLater">Sonra</button></div></div>
+    </section>` : ''}
+    ${ps === 'needs-home' && !dismissed('home') ? `<section class="card prompt">
+      <span class="list-ic">${ic('phone')}</span>
+      <div class="grow"><b>Ana ekrana ekle</b><p class="muted small">Bildirim alabilmek için Safari’de <b>Paylaş → Ana Ekrana Ekle</b> de, sonra uygulamayı ana ekrandaki simgeden aç.</p></div>
+      <button class="icon-btn" id="homeX" aria-label="Kapat">${ic('x')}</button>
+    </section>` : ''}
 
     <section class="card think">
       <button class="think-btn" id="think" aria-label="Seni düşünüyorum">${ic('heart')}</button>
@@ -661,6 +686,14 @@ async function home(v) {
       : '<p class="muted">İlk anınızı Anılar sekmesinden yazabilirsiniz.</p>'}
     </section>`;
 
+  $('#newsX')?.addEventListener('click', () => { state.newsClosed = true; $('#news').remove(); });
+  $('#newsAll')?.addEventListener('click', openBell);
+  $('#pushOn')?.addEventListener('click', async () => {
+    try { await enablePush(); toast('Bildirimler açıldı'); rerender(); } catch (er) { toast(er.message); }
+  });
+  $('#pushLater')?.addEventListener('click', () => { dismiss('push'); rerender(); });
+  $('#homeX')?.addEventListener('click', () => { dismiss('home'); rerender(); });
+
   // seni düşünüyorum
   let mine = myThoughts, busy = false;
   $('#think').onclick = async () => {
@@ -720,6 +753,108 @@ function flowerPicker() {
     } catch (er) { $('.err', m).textContent = er.message; }
   };
 }
+
+// ================================================================== yenilikler (zil + "sen yokken" kartı)
+let actCache = null;
+async function loadActivity(force = false) {
+  if (!force && actCache && Date.now() - actCache.t < 20000) return actCache.items;
+  const lim = 60;
+  const [mems, letterRows, locked, photos, reasons, logs, moods, firsts, todos, songs, places, thoughts, flowers, coupons, quizQ, days] = await Promise.all([
+    api.list('memories', lim), api.list('letters', lim), api.rpc('locked_letters'), api.list('photos', 200), api.list('reasons', lim),
+    api.list('prayer_logs', lim), api.list('moods', lim), api.list('firsts', lim), api.list('todos', lim), api.list('songs', lim),
+    api.list('places', lim), api.list('thoughts', 300), api.list('flowers', 200), api.list('coupons', lim), api.rpc('quiz_for_me'), api.list('special_days', lim),
+  ].map(p => p.catch(() => [])));
+  const items = [];
+  const cutoff = Date.now() - 14 * 864e5;
+  const add = (at, icon, text, href) => { if (at && new Date(at) >= cutoff) items.push({ at: new Date(at), icon, text, href }); };
+  const his = r => r.author && !isMine(r);
+  const byDay = (rows, icon, text, href) => {
+    const g = {};
+    rows.forEach(r => { const d = dayOf(r.created_at); (g[d] ??= []).push(r); });
+    Object.values(g).forEach(list => add(list.map(r => r.created_at).sort().pop(), icon, text(list.length), href));
+  };
+  mems.filter(his).forEach(m => add(m.created_at, 'book', `yeni bir anı ekledi: “${esc(m.title)}”`, '#/anilar'));
+  letterRows.filter(l => his(l) && l.recipient === state.me.id).forEach(l => add(l.created_at, 'mail', `sana bir mektup yazdı: “${esc(l.title)}”`, '#/mektuplar'));
+  locked.forEach(l => add(l.created_at, 'lock', `sana mühürlü bir mektup yazdı · ${fmtShort(l.open_at)}’da açılacak`, '#/mektuplar'));
+  byDay(photos.filter(his), 'image', n => `${n} fotoğraf ekledi`, '#/galeri');
+  reasons.filter(his).forEach(r => add(r.created_at, 'jar', `kavanoza yeni bir sebep attı`, '#/kavanoz'));
+  logs.filter(his).forEach(l => add(l.created_at, 'moon', `senin için ${esc(l.prayer_title)} okudu`, '#/dualar'));
+  moods.filter(his).forEach(m => add(m.created_at, 'smile', `bugün ${m.emoji}${m.note ? ` · “${esc(m.note)}”` : ''}`, '#/ruh-hali'));
+  firsts.filter(his).forEach(f => add(f.created_at, 'flag', `yeni bir ilk ekledi: “${esc(f.title)}”`, '#/ilkler'));
+  todos.filter(his).forEach(t => add(t.created_at, 'check', `hayal listenize ekledi: “${esc(t.text)}”`, '#/yapacaklar'));
+  songs.filter(his).forEach(s => add(s.created_at, 'music', `bir şarkı ekledi: “${esc(s.title)}”`, '#/sarkilar'));
+  places.filter(his).forEach(p => add(p.created_at, 'pin', `haritaya ekledi: “${esc(p.name)}”`, '#/harita'));
+  byDay(thoughts.filter(his), 'heart', n => `seni ${n} kez düşündü`, '#/');
+  flowers.filter(his).forEach(f => add(f.created_at, 'flower', `sana bir ${esc((FLOWERS.find(x => x[0] === f.kind)?.[1] ?? 'çiçek').toLocaleLowerCase('tr'))} gönderdi`, '#/bahce'));
+  coupons.filter(c => his(c) && c.recipient === state.me.id).forEach(c => add(c.created_at, 'ticket', `sana bir kupon yazdı: “${esc(c.title)}”`, '#/kuponlar'));
+  coupons.filter(c => isMine(c) && c.used_at).forEach(c => add(c.used_at, 'ticket', `“${esc(c.title)}” kuponunu kullandı`, '#/kuponlar'));
+  byDay(quizQ.filter(q => q.choice === null), 'quiz', n => `sana ${n} yeni soru sordu`, '#/test');
+  days.filter(his).forEach(d => add(d.created_at, 'calendar', `bir özel gün ekledi: “${esc(d.title)}”`, '#/ozel-gunler'));
+  items.sort((a, b) => b.at - a.at);
+  actCache = { t: Date.now(), items };
+  return items;
+}
+const freshItems = items => state.since ? items.filter(i => i.at > state.since) : [];
+const actRow = (i, isNew = false) => `<a class="act-row ${isNew ? 'is-new' : ''}" href="${i.href}">${ic(i.icon)}<span class="grow"><b>${esc(partnerName())}</b> ${i.text}<br><span class="muted small">${ago(i.at)}</span></span></a>`;
+
+async function refreshBell() {
+  try {
+    const n = freshItems(await loadActivity()).length;
+    const b = $('.bell-n');
+    if (b) { b.hidden = !n; b.textContent = n > 9 ? '9+' : n; }
+  } catch {}
+}
+async function openBell() {
+  const items = await loadActivity(true);
+  const m = modal(`<h2>Yenilikler</h2>
+    <p class="muted small">${esc(partnerName())}’nın son iki haftada paylaştıkları</p>
+    <div class="acts-list">${items.length ? items.slice(0, 40).map(i => actRow(i, state.since && i.at > state.since)).join('') : `<div class="empty">${ic('bell', 'xl')}<p>Henüz yeni bir şey yok</p></div>`}</div>`);
+  $$('.act-row', m).forEach(a => a.addEventListener('click', () => m.close()));
+  state.since = new Date();
+  refreshBell();
+}
+
+// ================================================================== telefon bildirimleri
+const NOTIFY_CATS = [
+  ['letters', 'Mektuplar'], ['prayers', 'Senin için edilen dualar'], ['thoughts', 'Seni düşünüyorum (en fazla 3 saatte bir)'],
+  ['flowers', 'Çiçekler'], ['fun', 'Kuponlar ve test soruları'], ['shares', 'Anılar, fotoğraflar ve diğer paylaşımlar'],
+];
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+async function pushState() {
+  if (DEMO || !VAPID_PUBLIC_KEY) return 'unavailable';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return isIOS && !isStandalone() ? 'needs-home' : 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = await reg?.pushManager.getSubscription();
+  return sub ? 'on' : 'off';
+}
+const b64uToBytes = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
+async function saveSub(sub) {
+  const j = sub.toJSON();
+  await api.upsert('push_subscriptions', { user_id: state.me.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, 'endpoint');
+}
+async function enablePush() {
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Bildirim izni verilmedi');
+  const reg = await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(VAPID_PUBLIC_KEY) });
+  await saveSub(sub);
+}
+async function disablePush() {
+  const reg = await navigator.serviceWorker.getRegistration();
+  const sub = await reg?.pushManager.getSubscription();
+  if (sub) { await api.removeWhere('push_subscriptions', 'endpoint', sub.endpoint); await sub.unsubscribe(); }
+}
+async function syncPush() {
+  try {
+    if (await pushState() !== 'on') return;
+    const sub = await (await navigator.serviceWorker.getRegistration()).pushManager.getSubscription();
+    if (sub) await saveSub(sub);
+  } catch {}
+}
+const dismissed = k => { try { return localStorage.getItem('dismiss-' + k) === '1'; } catch { return false; } };
+const dismiss = k => { try { localStorage.setItem('dismiss-' + k, '1'); } catch {} };
 
 // ================================================================== anılar
 async function memories(v) {
@@ -1330,12 +1465,55 @@ function settings() {
       <label>Yeni şifre<input type="password" name="pw" minlength="6" autocomplete="new-password" required></label>
       <button class="btn small">${ic('key')}Şifreyi değiştir</button>
     </form>
+    <div class="card soft" id="pushBox">
+      ${sectionTitle('bell', 'Telefon bildirimleri')}
+      <p class="small" id="pushStatus">Kontrol ediliyor…</p>
+      <div class="prompt-btns" id="pushBtns"></div>
+      <div class="prefs">
+        <p class="muted small">Hangi durumlarda bildirim gelsin?</p>
+        ${NOTIFY_CATS.map(([k, l]) => `<label class="check"><input type="checkbox" data-pref="${k}" ${state.people[state.me.id]?.notify?.[k] === false ? '' : 'checked'}> ${l}</label>`).join('')}
+      </div>
+    </div>
     <div class="card soft">
       ${sectionTitle('phone', 'iPhone ana ekranına ekle')}
       <p class="muted small">Safari’de aç → alttaki <b>Paylaş</b> → <b>Ana Ekrana Ekle</b>. Ana ekrandan açınca bir kez daha giriş yapman gerekir.</p>
     </div>
     <button class="btn ghost danger" id="out">${ic('logout')}Çıkış yap</button>`);
   $('#toAdmin', m)?.addEventListener('click', () => m.close());
+
+  const renderPush = async () => {
+    const st = await pushState().catch(() => 'unsupported');
+    const txt = {
+      on: 'Açık · bu cihaz bildirim alıyor.',
+      off: 'Kapalı. Açınca sana bir şey gönderildiğinde telefonuna gelir.',
+      denied: 'İzin reddedilmiş. iPhone’da Ayarlar → Bildirimler → E ❤ R’den izin verip tekrar dene.',
+      'needs-home': 'Bildirim için önce Safari’de Paylaş → Ana Ekrana Ekle de, sonra uygulamayı ana ekrandaki simgeden aç.',
+      unsupported: 'Bu tarayıcı bildirimleri desteklemiyor.',
+      unavailable: 'Demo modunda bildirimler kapalı.',
+    }[st];
+    $('#pushStatus', m).textContent = txt;
+    $('#pushBtns', m).innerHTML = st === 'on'
+      ? `<button class="btn small" id="pTest">Deneme bildirimi gönder</button><button class="link" id="pOff">Bu cihazda kapat</button>`
+      : st === 'off' ? `<button class="btn small" id="pOn">${ic('bell')}Bildirimleri aç</button>` : '';
+    $('#pOn', m)?.addEventListener('click', async () => {
+      try { await enablePush(); toast('Bildirimler açıldı'); renderPush(); } catch (er) { toast(er.message); }
+    });
+    $('#pOff', m)?.addEventListener('click', async () => {
+      try { await disablePush(); toast('Bu cihazda bildirimler kapatıldı'); renderPush(); } catch (er) { toast(er.message); }
+    });
+    $('#pTest', m)?.addEventListener('click', async e => {
+      e.target.disabled = true;
+      try { await api.rpc('push_test'); toast('Gönderildi, birkaç saniye içinde gelir'); } catch (er) { toast(er.message); }
+      setTimeout(() => { e.target.disabled = false; }, 4000);
+    });
+  };
+  renderPush();
+  $$('[data-pref]', m).forEach(c => c.onchange = async () => {
+    const me = state.people[state.me.id];
+    const prefs = { ...(me.notify ?? {}), [c.dataset.pref]: c.checked };
+    try { await api.rpc('set_my_notify', { prefs }); me.notify = prefs; toast('Kaydedildi'); }
+    catch (er) { toast(er.message); c.checked = !c.checked; }
+  });
   $('#pw', m).onsubmit = async e => {
     e.preventDefault();
     try { await api.changePassword(new FormData(e.target).get('pw')); toast('Şifre değişti'); e.target.reset(); }
@@ -1370,4 +1548,9 @@ if ('serviceWorker' in navigator && !DEMO) {
   });
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+  // Bildirime dokununca açık uygulamayı ilgili sayfaya götür
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data?.nav) location.hash = e.data.nav; });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { try { navigator.clearAppBadge?.(); } catch {} if (state.me) refreshBell(); }
+  });
 }
