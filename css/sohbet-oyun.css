@@ -102,3 +102,6 @@
 @media (max-width: 400px) { #mini { display: none; } }
 .msg.has-heart { margin-bottom: 10px; }
 .m-heart { z-index: 2; }
+.devices { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.devices p { margin: 0 0 6px; }
+.devices .btn { margin-top: 0; }

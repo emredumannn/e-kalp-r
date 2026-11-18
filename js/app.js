@@ -1901,6 +1901,29 @@ function settings() {
     $('#pushBtns', m).innerHTML = st === 'on'
       ? `<button class="btn small" id="pTest">Deneme bildirimi gönder</button><button class="link" id="pOff">Bu cihazda kapat</button>`
       : st === 'off' ? `<button class="btn small" id="pOn">${ic('bell')}Bildirimleri aç</button>` : '';
+    // Hesapta birden fazla cihaz kayıtlıysa temizleme seçeneği
+    if (st === 'on') {
+      try {
+        const subs = (await api.list('push_subscriptions')).filter(s => s.user_id === state.me.id);
+        if (subs.length > 1) {
+          const box = document.createElement('div');
+          box.className = 'devices';
+          box.innerHTML = `<p class="small">Bu hesapta <b>${subs.length} cihaz</b> kayıtlı.</p><button class="btn small ghost" id="pOnly">${ic('phone')}Sadece bu cihazda bildirim al</button>`;
+          $('#pushBtns', m).after(box);
+          $('#pOnly', m).onclick = async () => {
+            if (!confirm('Bu cihaz dışındaki tüm eski bildirim kayıtların silinsin mi? Diğer cihazlarda bildirim almak istersen orada tekrar açman gerekir.')) return;
+            try {
+              const reg = await navigator.serviceWorker.getRegistration();
+              const sub = await reg?.pushManager.getSubscription();
+              if (!sub) throw new Error('Bu cihazın bildirim kaydı bulunamadı');
+              await saveSub(sub);
+              await api.keepOnlyPush(state.me.id, sub.endpoint);
+              box.remove(); toast('Eski kayıtlar temizlendi, bildirimler sadece bu cihaza gelecek');
+            } catch (er) { toast(er.message); }
+          };
+        }
+      } catch {}
+    }
     $('#pOn', m)?.addEventListener('click', async () => {
       try { await enablePush(); toast('Bildirimler açıldı'); renderPush(); } catch (er) { toast(er.message); }
     });

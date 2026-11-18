@@ -30,6 +30,7 @@ export const ORDER = {
   tot_questions: ['created_at', true],
   tot_answers: ['created_at', true],
   memory_scores: ['created_at', false],
+  push_subscriptions: ['created_at', false],
 };
 
 function fail(error) {
@@ -85,6 +86,11 @@ const real = {
   async rpc(name, args = {}) { const { data, error } = await sb.rpc(name, args); fail(error); return data; },
   async upsert(table, row, onConflict) { const { error } = await sb.from(table).upsert(row, { onConflict }); fail(error); },
   async removeWhere(table, col, val) { const { error } = await sb.from(table).delete().eq(col, val); fail(error); },
+  // Bu kullanıcının, verilen cihaz dışındaki tüm bildirim kayıtlarını sil
+  async keepOnlyPush(userId, endpoint) {
+    const { error } = await sb.from('push_subscriptions').delete().eq('user_id', userId).neq('endpoint', endpoint);
+    fail(error);
+  },
   async upload(blob, ext = 'jpg', type = 'image/jpeg') {
     const path = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
     const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType: type, cacheControl: '31536000' });
@@ -165,6 +171,7 @@ const store = {
     { id: 'ms3', author: RABIA, body: 'Olur, dört gözle bekliyorum', photo: null, audio: null, audio_secs: null, hearted: false, read_at: null, created_at: day(-0.02) },
   ],
   tot_questions: [],
+  push_subscriptions: [],
   tot_answers: [
     { id: 'ta1', author: RABIA, qkey: 'b0', pick: 0, created_at: day(-1) },
     { id: 'ta2', author: RABIA, qkey: 'b1', pick: 1, created_at: day(-1) },
@@ -230,6 +237,7 @@ const demo = {
     ex ? (ex.pick = row.pick) : store.tot_answers.push({ id: id(), author: EMRE, created_at: new Date().toISOString(), ...row });
   },
   async removeWhere() {},
+  async keepOnlyPush() {},
   async upload(blob) { const p = id(); blobs[p] = URL.createObjectURL(blob); return p; },
   subscribe() { return () => {}; },
   async signedUrls(paths) { const m = {}; paths.forEach(p => { if (blobs[p]) m[p] = blobs[p]; }); return m; },
