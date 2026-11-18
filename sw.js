@@ -1,6 +1,6 @@
 // Uygulama kabuğunu önbellekler. Supabase istekleri her zaman ağdan gider.
 // Siteyi güncellediğinde VERSION'u bir artır.
-const VERSION = 'ekalpr-v6';
+const VERSION = 'ekalpr-v7';
 const SHELL = [
   './', './index.html', './css/style.css', './manifest.webmanifest',
   './js/app.js', './js/api.js', './js/config.js', './js/dualar.js', './js/icons.js',

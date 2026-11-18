@@ -514,3 +514,29 @@ input[type=checkbox], input[type=radio] { width: 18px; height: 18px; display: in
 .prefs { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 .prefs .check { margin: 8px 0; font-size: .88rem !important; }
 #pushStatus { margin: 0; }
+
+/* ---------- ana sayfa v2: nazar, düşünce, ruh hali, günün şarkısı ---------- */
+.nazar-wrap { display: flex; flex-direction: column; align-items: center; text-align: center; margin: 10px 0 22px; }
+.nazar { width: 118px; height: 118px; border-radius: 50%; filter: drop-shadow(0 14px 22px rgba(20, 50, 120, .32)) drop-shadow(0 2px 4px rgba(20, 50, 120, .2)); animation: nzFloat 5s ease-in-out infinite; }
+.nazar-svg { width: 100%; height: 100%; display: block; }
+.nazar.spin { animation: nzSpin .9s cubic-bezier(.3, .7, .3, 1), nzFloat 5s ease-in-out .9s infinite; }
+@keyframes nzFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes nzSpin { 0% { transform: scale(1) rotate(0); } 35% { transform: scale(.9) rotate(-12deg); } 70% { transform: scale(1.08) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
+.nazar-read { max-width: 440px; margin-top: 14px; padding: 0 8px; }
+.nazar-hint { margin: 0; font-size: .74rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.nazar-read.show { animation: rise .6s ease-out; background: rgba(255, 255, 255, .7); border: 1px solid #dfe8f6; border-radius: 20px; padding: 16px 18px; box-shadow: 0 10px 30px -16px rgba(20, 50, 120, .35); }
+.nazar-title { margin: 0 0 6px; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: #1c4fa8; font-weight: 700; }
+.nazar-text { margin: 0; font-family: var(--serif); font-style: italic; font-size: 1.2rem; line-height: 1.5; color: #23325a; }
+
+.think { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 24px 18px 20px; }
+.think-btn { width: 84px; height: 84px; margin-bottom: 12px; }
+.think-btn .ic { width: 38px; height: 38px; }
+.think-title { font-size: 1.5rem; }
+.think-count { margin-top: 2px; }
+
+.mood .emoji-pick { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; gap: 8px; margin: 4px -18px 12px; padding: 4px 18px 6px; scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.mood .emoji-pick::-webkit-scrollbar { display: none; }
+.mood .emoji-pick button { flex: none; width: 52px; height: 52px; font-size: 1.6rem; scroll-snap-align: start; }
+
+.song-day .song-name { margin: 0 0 4px; }
+.song-day .quote { display: block; margin: 0 0 4px; font-size: 1.05rem; }

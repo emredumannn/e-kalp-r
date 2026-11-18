@@ -52,4 +52,26 @@ export const FLOWERS = [
   ['gul', 'Gül', 'Aşkla'], ['lale', 'Lale', 'Özlemle'], ['papatya', 'Papatya', 'Saf sevgiyle'],
   ['lavanta', 'Lavanta', 'Huzurla'], ['sakayik', 'Şakayık', 'Mutlulukla'], ['ortanca', 'Ortanca', 'Minnetle'],
 ];
-export const flower = (kind, cls = '') => `<svg class="flower ${cls}" viewBox="0 0 40 60" aria-hidden="true">${SHAPES[kind] ?? SHAPES.gul}</svg>`;
+// Nazar boncuğu: cam görünümlü, altın çerçeveli
+export const nazar = () => `<svg class="nazar-svg" viewBox="0 0 120 120" aria-hidden="true">
+  <defs>
+    <radialGradient id="nzBlue" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#4b8ee0"/><stop offset=".55" stop-color="#1c4fa8"/><stop offset="1" stop-color="#0c2a6b"/></radialGradient>
+    <radialGradient id="nzWhite" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3eef9"/></radialGradient>
+    <radialGradient id="nzLight" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#cdeaff"/><stop offset=".7" stop-color="#6db2e8"/><stop offset="1" stop-color="#3f8fd2"/></radialGradient>
+    <radialGradient id="nzDark" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="#2d3a5c"/><stop offset="1" stop-color="#03071a"/></radialGradient>
+    <linearGradient id="nzGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f3dcb4"/><stop offset=".5" stop-color="#c8a27c"/><stop offset="1" stop-color="#9c7650"/></linearGradient>
+    <linearGradient id="nzGloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".8"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="56" fill="url(#nzGold)"/>
+  <circle cx="60" cy="60" r="52.5" fill="url(#nzBlue)"/>
+  <circle cx="60" cy="60" r="52.5" fill="none" stroke="#0a2257" stroke-opacity=".35" stroke-width="1"/>
+  <circle cx="60" cy="60" r="32" fill="url(#nzWhite)"/>
+  <circle cx="60" cy="60" r="22.5" fill="url(#nzLight)"/>
+  <circle cx="60" cy="60" r="12" fill="url(#nzDark)"/>
+  <circle cx="55.5" cy="55" r="3.4" fill="#fff" opacity=".92"/>
+  <circle cx="64" cy="64.5" r="1.4" fill="#fff" opacity=".5"/>
+  <ellipse cx="47" cy="33" rx="29" ry="14" fill="url(#nzGloss)" transform="rotate(-24 47 33)"/>
+  <path d="M86 92a40 40 0 0 1-30 12" stroke="#fff" stroke-opacity=".28" stroke-width="3" stroke-linecap="round" fill="none"/>
+</svg>`;
+
+export const flower =(kind, cls = '') => `<svg class="flower ${cls}" viewBox="0 0 40 60" aria-hidden="true">${SHAPES[kind] ?? SHAPES.gul}</svg>`;

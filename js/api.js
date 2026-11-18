@@ -124,7 +124,7 @@ const store = {
     { id: 't1', author: RABIA, text: 'Birlikte gün doğumu izlemek', note: '', done: false, done_at: null, created_at: day(-3) },
     { id: 't2', author: EMRE, text: 'İlk kahvemizi içmek', note: '', done: true, done_at: day(-5), created_at: day(-6) },
   ],
-  songs: [],
+  songs: [{ id: 'so1', author: RABIA, title: 'Bizim şarkımız', artist: 'Demo', url: null, note: 'İlk duyduğumuzda aklıma sen geldin', created_at: day(-4) }],
   places: [{ id: 'pl1', author: EMRE, name: 'İlk gördüğüm yer', lat: 41.0082, lng: 28.9784, visited_on: '2026-11-07', note: '', created_at: day(-8) }],
   surprises: [{ id: 's1', author: RABIA, recipient: EMRE, message: 'Bugün aklımdan hiç çıkmadın. İyi ki varsın.', shown_at: null, created_at: day(-0.05) }],
   greetings: [

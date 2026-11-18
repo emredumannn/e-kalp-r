@@ -1,7 +1,7 @@
 import { api, DEMO } from './api.js';
 import { START, TOGETHER, VAPID_PUBLIC_KEY } from './config.js';
 import { CATEGORIES } from './dualar.js';
-import { ic, flower, FLOWERS } from './icons.js';
+import { ic, flower, FLOWERS, nazar } from './icons.js';
 
 // ================================================================== yardımcılar
 const $ = (s, el = document) => el.querySelector(s);
@@ -553,10 +553,13 @@ function upcomingDays(rows) {
 }
 
 async function home(v) {
-  const [logs, letterRows, locked, reasons, mems, moodRows, greets, thoughts, flowers, coupons, days, photos] = await Promise.all([
+  const [logs, letterRows, locked, reasons, mems, moodRows, greets, thoughts, flowers, coupons, days, photos, prayersAll, songRows] = await Promise.all([
     api.list('prayer_logs', 30), api.list('letters'), api.rpc('locked_letters'), api.list('reasons'), api.list('memories'), api.list('moods', 50),
     api.list('greetings'), api.list('thoughts', 500), api.list('flowers'), api.list('coupons'), api.list('special_days'), api.list('photos'),
+    api.list('prayers'), api.list('songs'),
   ]);
+  const nazarList = prayersAll.filter(p => p.cat === 'nazar' && p.tr);
+  const song = dailyPick(songRows);
   cache('reasons', reasons);
   const t = todayISO();
   const forMe = logs.filter(l => !isMine(l) && Date.now() - new Date(l.created_at) < 7 * 864e5).slice(0, 3);
@@ -627,13 +630,9 @@ async function home(v) {
       <button class="icon-btn" id="homeX" aria-label="Kapat">${ic('x')}</button>
     </section>` : ''}
 
-    <section class="card think">
-      <button class="think-btn" id="think" aria-label="Seni düşünüyorum">${ic('heart')}</button>
-      <div class="grow">
-        <p class="think-title">Seni düşünüyorum</p>
-        <p class="think-count" id="thinkHis">${hisThoughts ? `<b>${esc(partnerName())}</b> bugün seni <b>${hisThoughts}</b> kez düşündü` : `Dokun, ${esc(partnerName())} düşündüğünü görsün`}</p>
-        <p class="muted small" id="thinkMine">${myThoughts ? `Sen bugün ${myThoughts} kez` : ''}</p>
-      </div>
+    <section class="nazar-wrap">
+      <button class="nazar" id="nazar" aria-label="Nazar duası oku">${nazar()}</button>
+      <div class="nazar-read" id="nazarRead"><p class="nazar-hint">Dokun, bir nazar duası oku</p></div>
     </section>
 
     <section class="card bloom">
@@ -665,6 +664,13 @@ async function home(v) {
       </div>
     </section>
 
+    <section class="card think">
+      <button class="think-btn" id="think" aria-label="Seni düşünüyorum">${ic('heart')}</button>
+      <p class="think-title">Seni düşünüyorum</p>
+      <p class="think-count" id="thinkHis">${hisThoughts ? `<b>${esc(partnerName())}</b> bugün seni <b>${hisThoughts}</b> kez düşündü` : `Dokun, ${esc(partnerName())} düşündüğünü görsün`}</p>
+      <p class="muted small" id="thinkMine">${myThoughts ? `Sen bugün ${myThoughts} kez` : ''}</p>
+    </section>
+
     <section class="card jar">
       <h3 class="serif">${esc(state.s.jarTitle)}</h3>
       <button class="jar-btn" id="jarBtn" aria-label="Kavanozdan çek">${ic('jar')}</button>
@@ -684,7 +690,29 @@ async function home(v) {
         <span class="thumb">${m.photos[0] ? img(m.photos[0]) : ic('book')}</span>
         <span><b>${esc(m.title)}</b><br><span class="muted small">${fmtDate(m.happened_on)}</span></span></a>`).join('')
       : '<p class="muted">İlk anınızı Anılar sekmesinden yazabilirsiniz.</p>'}
+    </section>
+
+    <section class="card song-day">
+      ${sectionTitle('music', 'Günün şarkısı', '<a class="more-link" href="#/sarkilar">Şarkılarımız</a>')}
+      ${song ? `<p class="song-name"><b>${esc(song.title)}</b>${song.artist ? ` <span class="muted">· ${esc(song.artist)}</span>` : ''}</p>
+        ${song.note ? `<p class="quote">“${esc(song.note)}”</p>` : ''}
+        ${embed(song.url)}`
+      : '<p class="muted small">Şarkılarımıza ilk şarkıyı ekleyin; her gün biri burada çalsın.</p>'}
     </section>`;
+
+  let lastNazar = -1;
+  $('#nazar').onclick = () => {
+    const b = $('#nazar'), r = $('#nazarRead');
+    b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin');
+    try { navigator.vibrate?.(20); } catch {}
+    if (!nazarList.length) return;
+    let i; do { i = Math.floor(Math.random() * nazarList.length); } while (nazarList.length > 1 && i === lastNazar);
+    lastNazar = i;
+    const p = nazarList[i];
+    r.classList.remove('show'); void r.offsetWidth;
+    r.innerHTML = `<p class="nazar-title">${esc(p.title)}</p><p class="nazar-text">${esc(p.tr)}</p>`;
+    r.classList.add('show');
+  };
 
   $('#newsX')?.addEventListener('click', () => { state.newsClosed = true; $('#news').remove(); });
   $('#newsAll')?.addEventListener('click', openBell);
