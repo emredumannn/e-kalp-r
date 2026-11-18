@@ -1,0 +1,110 @@
+// Hazır dualar. Arapça metin, Türkçe okunuş ve anlam.
+// Anlamlar sade bir dille özetlenmiştir; dilerseniz Diyanet mealiyle karşılaştırabilirsiniz.
+export const CATEGORIES = [
+  { key: 'nazar',   icon: '🧿', name: 'Nazar ve Korunma' },
+  { key: 'biz',     icon: '💞', name: 'Birbirimiz İçin' },
+  { key: 'saglik',  icon: '🌿', name: 'Sağlık ve Afiyet' },
+  { key: 'yol',     icon: '🛣️', name: 'Yol ve Yolculuk' },
+  { key: 'bizim',   icon: '✍️', name: 'Bizim Dualarımız' },
+];
+
+export const PRAYERS = [
+  {
+    id: 'ayetel-kursi', cat: 'nazar', title: 'Âyetü’l-Kürsî', note: 'Bakara 255 · Nazara ve her türlü kötülüğe karşı',
+    target: 1,
+    ar: 'اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ ۗ مَنْ ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلَّا بِإِذْنِهِ ۚ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ ۖ وَلَا يُحِيطُونَ بِشَيْءٍ مِنْ عِلْمِهِ إِلَّا بِمَا شَاءَ ۚ وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ ۖ وَلَا يَئُودُهُ حِفْظُهُمَا ۚ وَهُوَ الْعَلِيُّ الْعَظِيمُ',
+    tr: 'Allâhü lâ ilâhe illâ hüve’l-hayyü’l-kayyûm. Lâ te’huzühû sinetün ve lâ nevm. Lehû mâ fi’s-semâvâti ve mâ fi’l-ard. Men ze’llezî yeşfeu indehû illâ bi-iznih. Ya‘lemü mâ beyne eydîhim ve mâ halfehüm. Ve lâ yühîtûne bi-şey’in min ilmihî illâ bimâ şâ’. Vesia kürsiyyühü’s-semâvâti ve’l-ard. Ve lâ yeûdühû hıfzuhümâ. Ve hüve’l-aliyyü’l-azîm.',
+    mean: 'Allah’tan başka ilah yoktur; O diridir, her şeyi ayakta tutandır. Onu ne uyuklama ne de uyku tutar. Göklerde ve yerde ne varsa O’nundur. İzni olmadan O’nun katında kim şefaat edebilir? O, kulların önündekini ve arkasındakini bilir; onlar ise O’nun bilgisinden, dilediği kadarı dışında hiçbir şeyi kavrayamazlar. Kürsüsü gökleri ve yeri kaplamıştır; onları korumak O’na ağır gelmez. O yücedir, büyüktür.',
+  },
+  {
+    id: 'felak', cat: 'nazar', title: 'Felak Sûresi', note: 'Hasetçinin ve nazarın şerrinden sığınma',
+    target: 3,
+    ar: 'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ ۝ مِنْ شَرِّ مَا خَلَقَ ۝ وَمِنْ شَرِّ غَاسِقٍ إِذَا وَقَبَ ۝ وَمِنْ شَرِّ النَّفَّاثَاتِ فِي الْعُقَدِ ۝ وَمِنْ شَرِّ حَاسِدٍ إِذَا حَسَدَ',
+    tr: 'Kul eûzü bi-rabbi’l-felak. Min şerri mâ halak. Ve min şerri ğâsikın izâ vekab. Ve min şerri’n-neffâsâti fi’l-ukad. Ve min şerri hâsidin izâ hased.',
+    mean: 'De ki: Sabahın Rabbine sığınırım; yarattığı şeylerin şerrinden, karanlığı çöktüğünde gecenin şerrinden, düğümlere üfleyenlerin şerrinden ve haset ettiğinde hasetçinin şerrinden.',
+  },
+  {
+    id: 'nas', cat: 'nazar', title: 'Nâs Sûresi', note: 'Vesveseden ve kötülükten sığınma',
+    target: 3,
+    ar: 'قُلْ أَعُوذُ بِرَبِّ النَّاسِ ۝ مَلِكِ النَّاسِ ۝ إِلَٰهِ النَّاسِ ۝ مِنْ شَرِّ الْوَسْوَاسِ الْخَنَّاسِ ۝ الَّذِي يُوَسْوِسُ فِي صُدُورِ النَّاسِ ۝ مِنَ الْجِنَّةِ وَالنَّاسِ',
+    tr: 'Kul eûzü bi-rabbi’n-nâs. Meliki’n-nâs. İlâhi’n-nâs. Min şerri’l-vesvâsi’l-hannâs. Ellezî yüvesvisü fî sudûri’n-nâs. Mine’l-cinneti ve’n-nâs.',
+    mean: 'De ki: İnsanların Rabbine, insanların Melikine, insanların İlahına sığınırım; sinsi vesvesecinin şerrinden, o ki insanların göğüslerine vesvese verir; cinlerden de insanlardan da.',
+  },
+  {
+    id: 'ihlas', cat: 'nazar', title: 'İhlâs Sûresi', note: 'Felak ve Nâs ile birlikte okunur',
+    target: 3,
+    ar: 'قُلْ هُوَ اللَّهُ أَحَدٌ ۝ اللَّهُ الصَّمَدُ ۝ لَمْ يَلِدْ وَلَمْ يُولَدْ ۝ وَلَمْ يَكُنْ لَهُ كُفُوًا أَحَدٌ',
+    tr: 'Kul hüvallâhü ehad. Allâhü’s-samed. Lem yelid ve lem yûled. Ve lem yekün lehû küfüven ehad.',
+    mean: 'De ki: O Allah birdir. Allah her şeyden müstağnidir, her şey O’na muhtaçtır. Doğurmamış ve doğurulmamıştır. Hiçbir şey O’nun dengi değildir.',
+  },
+  {
+    id: 've-in-yekad', cat: 'nazar', title: 'Ve in yekâd', note: 'Kalem 51–52 · Nazar duası olarak bilinir',
+    target: 1,
+    ar: 'وَإِنْ يَكَادُ الَّذِينَ كَفَرُوا لَيُزْلِقُونَكَ بِأَبْصَارِهِمْ لَمَّا سَمِعُوا الذِّكْرَ وَيَقُولُونَ إِنَّهُ لَمَجْنُونٌ ۝ وَمَا هُوَ إِلَّا ذِكْرٌ لِلْعَالَمِينَ',
+    tr: 'Ve in yekâdüllezîne keferû le-yüzlikûneke bi-ebsârihim lemmâ semiu’z-zikra ve yekûlûne innehû le-mecnûn. Ve mâ hüve illâ zikrun li’l-âlemîn.',
+    mean: 'İnkâr edenler Zikr’i (Kur’an’ı) duydukları zaman neredeyse seni gözleriyle devirecekler ve “O bir delidir” diyorlar. Oysa o, âlemler için ancak bir öğüttür.',
+  },
+  {
+    id: 'euzu', cat: 'nazar', title: 'Eûzü bi-kelimâtillâh', note: 'Akşam üç kere okunması tavsiye edilir',
+    target: 3,
+    ar: 'أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ',
+    tr: 'Eûzü bi-kelimâtillâhi’t-tâmmâti min şerri mâ halak.',
+    mean: 'Yarattığı şeylerin şerrinden Allah’ın eksiksiz kelimelerine sığınırım.',
+  },
+  {
+    id: 'masallah', cat: 'nazar', title: 'Mâşâallah', note: 'Kehf 39 · Güzel bir şey görünce söylenir',
+    target: 33,
+    ar: 'مَا شَاءَ اللَّهُ لَا قُوَّةَ إِلَّا بِاللَّهِ',
+    tr: 'Mâşâallah, lâ kuvvete illâ billâh.',
+    mean: 'Allah ne dilerse o olur; güç ve kuvvet ancak Allah’ındır.',
+  },
+  {
+    id: 'furkan-74', cat: 'biz', title: 'Gözümüzün nuru', note: 'Furkân 74 · Eşler için okunan dua',
+    target: 1,
+    ar: 'رَبَّنَا هَبْ لَنَا مِنْ أَزْوَاجِنَا وَذُرِّيَّاتِنَا قُرَّةَ أَعْيُنٍ وَاجْعَلْنَا لِلْمُتَّقِينَ إِمَامًا',
+    tr: 'Rabbenâ heb lenâ min ezvâcinâ ve zürriyyâtinâ kurrate a‘yünin vec‘alnâ li’l-müttekîne imâmâ.',
+    mean: 'Rabbimiz! Eşlerimizi ve çocuklarımızı bize göz aydınlığı kıl ve bizi takva sahiplerine önder eyle.',
+  },
+  {
+    id: 'rabbena-atina', cat: 'biz', title: 'Rabbenâ âtinâ', note: 'Bakara 201 · Dünya ve âhiret iyiliği',
+    target: 1,
+    ar: 'رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ',
+    tr: 'Rabbenâ âtinâ fi’d-dünyâ haseneten ve fi’l-âhirati haseneten ve kınâ azâbe’n-nâr.',
+    mean: 'Rabbimiz! Bize dünyada da iyilik ver, âhirette de iyilik ver ve bizi ateş azabından koru.',
+  },
+  {
+    id: 'biz-turkce', cat: 'biz', title: 'İkimiz için', note: 'Kendi sözlerimizle',
+    target: 1,
+    ar: '',
+    tr: '',
+    mean: 'Allah’ım, bizi birbirimize hayırlı eyle. Kalplerimizi birbirine ısındır, aramıza hiçbir kötü göz ve kötü söz girmesin. Birbirimizin huzuru, sığınağı ve dua arkadaşı olalım. Yolumuzu hep aynı yöne çevir, bizi dünyada da âhirette de bir eyle. Âmin.',
+  },
+  {
+    id: 'afini', cat: 'saglik', title: 'Allâhümme âfinî', note: 'Sabah ve akşam üçer kere',
+    target: 3,
+    ar: 'اللَّهُمَّ عَافِنِي فِي بَدَنِي، اللَّهُمَّ عَافِنِي فِي سَمْعِي، اللَّهُمَّ عَافِنِي فِي بَصَرِي',
+    tr: 'Allâhümme âfinî fî bedenî. Allâhümme âfinî fî sem‘î. Allâhümme âfinî fî basarî.',
+    mean: 'Allah’ım, bedenime afiyet ver. Allah’ım, kulağıma afiyet ver. Allah’ım, gözüme afiyet ver.',
+  },
+  {
+    id: 'sifa', cat: 'saglik', title: 'Şifa ayeti', note: 'Şuarâ 80',
+    target: 7,
+    ar: 'وَإِذَا مَرِضْتُ فَهُوَ يَشْفِينِ',
+    tr: 'Ve izâ meridtü fe-hüve yeşfîn.',
+    mean: 'Hastalandığımda bana şifa veren O’dur.',
+  },
+  {
+    id: 'bismillah-tevekkeltu', cat: 'yol', title: 'Evden çıkarken', note: 'Yola çıkan için',
+    target: 1,
+    ar: 'بِسْمِ اللَّهِ تَوَكَّلْتُ عَلَى اللَّهِ وَلَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ',
+    tr: 'Bismillâhi tevekkeltü alallâh, ve lâ havle ve lâ kuvvete illâ billâh.',
+    mean: 'Allah’ın adıyla; Allah’a tevekkül ettim. Güç ve kuvvet ancak Allah’ındır.',
+  },
+  {
+    id: 'subhanellezi', cat: 'yol', title: 'Yolculuk duası', note: 'Zuhruf 13–14 · Araca binerken',
+    target: 1,
+    ar: 'سُبْحَانَ الَّذِي سَخَّرَ لَنَا هَٰذَا وَمَا كُنَّا لَهُ مُقْرِنِينَ ۝ وَإِنَّا إِلَىٰ رَبِّنَا لَمُنْقَلِبُونَ',
+    tr: 'Sübhânellezî sahhara lenâ hâzâ ve mâ künnâ lehû mukrinîn. Ve innâ ilâ rabbinâ le-munkalibûn.',
+    mean: 'Bunu bizim hizmetimize vereni tenzih ederiz; yoksa biz buna güç yetiremezdik. Şüphesiz biz Rabbimize döneceğiz.',
+  },
+];
