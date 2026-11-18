@@ -454,6 +454,7 @@ async function enter(user) {
   try { const prev = await api.rpc('touch_seen'); state.since = prev ? new Date(prev) : null; } catch {}
   try { navigator.clearAppBadge?.(); } catch {}
   shell();
+  showLock();
   addEventListener('hashchange', route);
   await route();
   setInterval(tick, 1000);
@@ -519,12 +520,12 @@ function shell() {
 }
 
 const MORE = ['ruh-hali', 'ilkler', 'yapacaklar', 'sarkilar', 'muzik', 'harita', 'kavanoz', 'admin', 'bahce', 'kuponlar', 'test',
-  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza'];
+  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet'];
 const ROUTES = {
   '': home, anilar: memories, mektuplar: letters, galeri: gallery, dualar: prayers, daha: more,
   'ruh-hali': moods, ilkler: firsts, yapacaklar: todos, sarkilar: songs, muzik: songs, harita: map, kavanoz: jar, admin,
   bahce: garden, kuponlar: coupons, test: quiz, 'ozel-gunler': specialDays, surprizler: surprises, selamlar: greetings,
-  fisilti: chat, bumuo: thisOrThat, hafiza: memoryGame,
+  fisilti: chat, bumuo: thisOrThat, hafiza: memoryGame, ozet: wraps,
 };
 async function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
@@ -613,6 +614,8 @@ async function home(v) {
   await loadUrls([...(daily ? [daily.path] : []), ...mems.slice(0, 3).flatMap(m => m.photos.slice(0, 1))]);
   const [activity, ps] = await Promise.all([loadActivity(true).catch(() => []), pushState().catch(() => 'unsupported')]);
   const fresh = freshItems(activity);
+  const wrapMonth = Date.now() >= TOGETHER_D ? elapsed(TOGETHER_D).months : 0;
+  const wrapReady = wrapMonth >= 1 && Date.now() - addMonths(wrapMonth) < 4 * 864e5 && !seenWrap(wrapMonth);
 
   const notes = [
     ...forMe.map(l => `<p>${ic('moon')}<span><b>${esc(partnerName())}</b> senin için ${esc(l.prayer_title)} okudu${l.count > 1 ? ` · ${l.count} kez` : ''} <span class="muted">${ago(l.created_at)}</span></span></p>`),
@@ -660,6 +663,11 @@ async function home(v) {
       <div class="grow"><b>Ana ekrana ekle</b><p class="muted small">Bildirim alabilmek için Safari’de <b>Paylaş → Ana Ekrana Ekle</b> de, sonra uygulamayı ana ekrandaki simgeden aç.</p></div>
       <button class="icon-btn" id="homeX" aria-label="Kapat">${ic('x')}</button>
     </section>` : ''}
+
+    ${wrapReady ? `<button class="card wrap-ready" id="wrapReady">
+      <span class="list-ic">${ic('sparkle')}</span>
+      <span class="grow"><b>${wrapMonth}. ayımızın özeti hazır</b><br><span class="small">Bu ayın hikâyesini birlikte izleyin</span></span>
+      ${ic('play')}</button>` : ''}
 
     <section class="nazar-wrap">
       <button class="nazar" id="nazar" aria-label="Nazar duası oku">${nazar()}</button>
@@ -745,6 +753,7 @@ async function home(v) {
     r.classList.add('show');
   };
 
+  $('#wrapReady')?.addEventListener('click', async () => { await openWrap(wrapMonth); $('#wrapReady')?.remove(); });
   $('#newsX')?.addEventListener('click', () => { state.newsClosed = true; $('#news').remove(); });
   $('#newsAll')?.addEventListener('click', openBell);
   $('#pushOn')?.addEventListener('click', async () => {
@@ -917,6 +926,236 @@ async function syncPush() {
 }
 const dismissed = k => { try { return localStorage.getItem('dismiss-' + k) === '1'; } catch { return false; } };
 const dismiss = k => { try { localStorage.setItem('dismiss-' + k, '1'); } catch {} };
+
+// ================================================================== gece modu
+const THEME_KEY = 'ekalpr-theme';
+const getTheme = () => { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch { return 'auto'; } };
+function applyTheme(t = getTheme()) {
+  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  $('meta[name=theme-color]')?.setAttribute('content', dark ? '#161117' : '#fbe4ec');
+}
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch {}
+applyTheme();
+
+// ================================================================== uygulama kilidi (sadece bu cihazda)
+const LOCK_KEY = 'ekalpr-lock';
+const LOCK_DELAYS = [[0, 'Her açılışta'], [60, '1 dakika sonra'], [900, '15 dakika sonra'], [3600, '1 saat sonra']];
+const lockCfg = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY)); } catch { return null; } };
+const saveLock = c => { try { c ? localStorage.setItem(LOCK_KEY, JSON.stringify(c)) : localStorage.removeItem(LOCK_KEY); } catch {} };
+async function pinHash(salt, pin) {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}:${pin}`));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+/** Tam ekran 4 haneli şifre tuş takımı. check(pin) true dönerse kapanır. */
+function pinPad({ sub, check, extra }) {
+  const o = document.createElement('div');
+  o.className = 'lock';
+  o.innerHTML = `<div class="lock-box">
+    <div class="logo">${brand(state.s?.title ?? DEFAULTS.title)}</div>
+    <p class="lock-sub">${esc(sub)}</p>
+    <div class="pin-dots"><span></span><span></span><span></span><span></span></div>
+    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
+      <button data-k="x" class="pad-link">${extra ? esc(extra.label) : ''}</button><button data-k="0">0</button>
+      <button data-k="del" class="pad-link" aria-label="Sil">${ic('back')}</button></div>
+  </div>`;
+  document.body.append(o);
+  requestAnimationFrame(() => o.classList.add('show'));
+  let pin = '', busy = false;
+  const dots = $$('.pin-dots span', o);
+  const paint = () => dots.forEach((d, i) => d.classList.toggle('on', i < pin.length));
+  const close = () => { o.classList.remove('show'); removeEventListener('keydown', onKey); setTimeout(() => o.remove(), 300); };
+  const press = async k => {
+    if (busy) return;
+    if (k === 'x') { if (extra) extra.run(close); return; }
+    if (k === 'del') { pin = pin.slice(0, -1); paint(); return; }
+    if (pin.length >= 4) return;
+    pin += k; paint();
+    try { navigator.vibrate?.(8); } catch {}
+    if (pin.length === 4) {
+      busy = true;
+      const ok = await check(pin);
+      if (ok) close();
+      else { $('.pin-dots', o).classList.add('shake'); setTimeout(() => { $('.pin-dots', o)?.classList.remove('shake'); pin = ''; paint(); busy = false; }, 450); }
+    }
+  };
+  const onKey = e => { if (/^\d$/.test(e.key)) press(e.key); else if (e.key === 'Backspace') press('del'); };
+  addEventListener('keydown', onKey);
+  $$('[data-k]', o).forEach(b => b.onclick = () => press(b.dataset.k));
+  return o;
+}
+const askPin = sub => new Promise(res => pinPad({
+  sub, check: async pin => { res(pin); return true; },
+  extra: { label: 'Vazgeç', run: close => { close(); res(null); } },
+}));
+let lockedNow = false, hiddenAt = 0;
+function showLock() {
+  const c = lockCfg();
+  if (!c || lockedNow || !state.me) return;
+  lockedNow = true;
+  pinPad({
+    sub: 'Şifreni gir',
+    check: async pin => { const ok = (await pinHash(c.salt, pin)) === c.hash; if (ok) lockedNow = false; return ok; },
+    extra: {
+      label: 'Unuttum', run: async () => {
+        if (!confirm('Kilit sıfırlanacak ve çıkış yapılacak. Hesap şifrenle tekrar girebilirsin.')) return;
+        saveLock(null); await api.signOut(); location.hash = ''; location.reload();
+      },
+    },
+  });
+}
+document.addEventListener('visibilitychange', () => {
+  const c = lockCfg();
+  if (!c || !state.me) return;
+  if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); if (c.delay === 0) showLock(); }
+  else if (hiddenAt && Date.now() - hiddenAt >= c.delay * 1000) showLock();
+});
+async function setupLock() {
+  const a = await askPin('Yeni 4 haneli şifreni belirle'); if (!a) return false;
+  const b = await askPin('Şifreyi tekrar gir'); if (!b) return false;
+  if (a !== b) { toast('Şifreler eşleşmedi, tekrar dene'); return false; }
+  const salt = crypto.randomUUID();
+  saveLock({ salt, hash: await pinHash(salt, a), delay: lockCfg()?.delay ?? 60 });
+  return true;
+}
+async function verifyPin() {
+  const c = lockCfg(); if (!c) return true;
+  const p = await askPin('Mevcut şifreni gir'); if (!p) return false;
+  if ((await pinHash(c.salt, p)) !== c.hash) { toast('Şifre yanlış'); return false; }
+  return true;
+}
+
+// ================================================================== aylık özet
+const monthRange = n => ({ from: addMonths(n - 1), to: addMonths(n) });
+const monthsSoFar = () => Date.now() < TOGETHER_D ? 0 : elapsed(TOGETHER_D).months + 1;   // son eleman = devam eden ay
+const fmtDM = d => new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+// Türkçe bulunma eki: "Aralık" → "Aralık’ta", "Kasım" → "Kasım’da", "Eylül" → "Eylül’de"
+function ekDa(word) {
+  const w = word.toLocaleLowerCase('tr');
+  const v = [...w].reverse().find(c => 'aeıioöuü'.includes(c)) ?? 'a';
+  const hard = 'çfhkpsşt'.includes(w.at(-1));
+  return `${word}’${hard ? 't' : 'd'}${'aıou'.includes(v) ? 'a' : 'e'}`;
+}
+const seenWrap = n => { try { return localStorage.getItem('ozet-' + n) === '1'; } catch { return false; } };
+const markWrap = n => { try { localStorage.setItem('ozet-' + n, '1'); } catch {} };
+
+async function wrapData(n) {
+  const { from, to } = monthRange(n);
+  const end = Math.min(+to, Date.now());
+  const inRange = ts => { const t = +new Date(ts); return t >= +from && t < end; };
+  const L = t => api.list(t, 2000).catch(() => []);
+  const [msgs, thoughts, flowers, mems, photos, letters, logs, moods, reasons, songs, places, firsts, scores, tot] = await Promise.all(
+    ['messages', 'thoughts', 'flowers', 'memories', 'photos', 'letters', 'prayer_logs', 'moods', 'reasons', 'songs', 'places', 'firsts', 'memory_scores', 'tot_answers'].map(L));
+  const f = rows => rows.filter(r => inRange(r.created_at));
+  const split = rows => ({ me: rows.filter(isMine).length, him: rows.filter(r => !isMine(r)).length, all: rows.length });
+  const d = {
+    n, from, to, end, done: +to <= Date.now(),
+    days: Math.max(1, Math.round((end - from) / 864e5)),
+    msgs: f(msgs), thoughts: f(thoughts), flowers: f(flowers), mems: f(mems), photos: f(photos), letters: f(letters),
+    logs: f(logs), moods: f(moods), reasons: f(reasons), songs: f(songs), places: f(places), firsts: f(firsts), scores: f(scores),
+  };
+  d.msgSplit = split(d.msgs); d.thoughtSplit = split(d.thoughts); d.flowerSplit = split(d.flowers);
+  const byDay = {}; d.msgs.forEach(m => { const k = dayOf(m.created_at); byDay[k] = (byDay[k] || 0) + 1; });
+  d.busiest = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0] ?? null;
+  const favFlower = {}; d.flowers.forEach(x => { favFlower[x.kind] = (favFlower[x.kind] || 0) + 1; });
+  d.favFlower = Object.entries(favFlower).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topEmoji = rows => { const c = {}; rows.forEach(r => { c[r.emoji] = (c[r.emoji] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null; };
+  d.moodMe = topEmoji(d.moods.filter(isMine)); d.moodHim = topEmoji(d.moods.filter(r => !isMine(r)));
+  const prayCount = {}; d.logs.forEach(l => { prayCount[l.prayer_title] = (prayCount[l.prayer_title] || 0) + (l.count || 1); });
+  d.topPrayer = Object.entries(prayCount).sort((a, b) => b[1] - a[1])[0] ?? null;
+  d.prayTotal = d.logs.reduce((s, l) => s + (l.count || 1), 0);
+  d.reason = d.reasons.length ? d.reasons[Math.floor(Math.random() * d.reasons.length)] : null;
+  d.pics = [...d.photos.map(p => p.path), ...d.mems.flatMap(m => m.photos)].sort(() => Math.random() - .5).slice(0, 4);
+  const myA = Object.fromEntries(tot.filter(isMine).map(a => [a.qkey, a.pick])), hisA = Object.fromEntries(tot.filter(a => !isMine(a)).map(a => [a.qkey, a.pick]));
+  const both = Object.keys(myA).filter(k => k in hisA);
+  d.compat = both.length >= 3 ? Math.round(both.filter(k => myA[k] === hisA[k]).length / both.length * 100) : null;
+  d.bestScore = d.scores.slice().sort((a, b) => a.seconds - b.seconds)[0] ?? null;
+  await loadUrls(d.pics);
+  return d;
+}
+
+function wrapSlides(d) {
+  const P = esc(partnerName()), S = [];
+  const bar = (a, b) => { const t = Math.max(1, a + b); return `<div class="w-bar"><span style="width:${a / t * 100}%"></span></div><div class="w-legend"><span>Sen · ${a}</span><span>${P} · ${b}</span></div>`; };
+  S.push({ bg: 'w1', html: `<p class="w-kicker">${brand(state.s.title)}</p><p class="w-script">${d.n}. ayımız</p>
+    <p class="w-sub">${fmtDM(d.from)} – ${fmtDM(d.done ? d.to : Date.now())}${d.done ? '' : ' · devam ediyor'}</p><p class="w-hint">Dokunarak ilerle</p>` });
+  const hours = Math.round((d.end - d.from) / 36e5);
+  S.push({ bg: 'w2', html: `<p class="w-kicker">Bu ay birlikte</p><p class="w-big">${d.days}</p><p class="w-label">gün</p>
+    <p class="w-sub">${hours.toLocaleString('tr-TR')} saat · ${(hours * 60).toLocaleString('tr-TR')} dakika</p><p class="w-quote">…ve her saniyesinde seni biraz daha sevdim</p>` });
+  if (d.msgSplit.all) S.push({ bg: 'w3', html: `<p class="w-kicker">Fısıltılarımız</p><p class="w-big">${d.msgSplit.all}</p><p class="w-label">mesaj</p>${bar(d.msgSplit.me, d.msgSplit.him)}
+    ${d.busiest ? `<p class="w-sub">En çok fısıldaştığımız gün<br><b>${fmtDM(d.busiest[0])}</b> · ${d.busiest[1]} mesaj</p>` : ''}` });
+  if (d.thoughtSplit.all) S.push({ bg: 'w4', html: `<p class="w-kicker">Seni düşünüyorum</p>
+    <p class="w-line"><b>${P}</b> seni</p><p class="w-big">${d.thoughtSplit.him}</p><p class="w-label">kez düşündü</p>
+    ${d.thoughtSplit.me ? `<p class="w-sub">Sen de onu ${d.thoughtSplit.me} kez düşündün</p>` : ''}` });
+  if (d.flowerSplit.all) S.push({ bg: 'w5', html: `<p class="w-kicker">Bahçemiz</p><div class="w-garden">${d.flowers.slice(0, 14).map(x => flower(x.kind)).join('')}</div>
+    <p class="w-big sm">${d.flowerSplit.all}</p><p class="w-label">çiçek açtı</p>${bar(d.flowerSplit.me, d.flowerSplit.him)}
+    ${d.favFlower ? `<p class="w-sub">Bu ayın çiçeği: <b>${esc(FLOWERS.find(f => f[0] === d.favFlower)?.[1] ?? '')}</b></p>` : ''}` });
+  if (d.mems.length || d.photos.length) S.push({ bg: 'w6', html: `<p class="w-kicker">Anılarımız</p>
+    ${d.pics.length ? `<div class="w-collage n${d.pics.length}">${d.pics.map(p => `<span>${img(p)}</span>`).join('')}</div>` : ''}
+    <p class="w-sub"><b>${d.mems.length}</b> anı · <b>${d.photos.length}</b> fotoğraf${d.firsts.length ? ` · <b>${d.firsts.length}</b> ilk` : ''}</p>
+    ${d.mems[0] ? `<p class="w-quote">“${esc(d.mems[0].title)}”</p>` : ''}` });
+  if (d.logs.length) S.push({ bg: 'w7', html: `<p class="w-kicker">Dualarımız</p><div class="w-nazar">${nazar()}</div>
+    <p class="w-big sm">${d.prayTotal}</p><p class="w-label">kez birbirimiz için okuduk</p>
+    ${d.topPrayer ? `<p class="w-sub">En çok okunan: <b>${esc(d.topPrayer[0])}</b></p>` : ''}` });
+  if (d.moodMe || d.moodHim) S.push({ bg: 'w8', html: `<p class="w-kicker">Bu ayın halleri</p>
+    <div class="w-moods">${d.moodMe ? `<div><span>${d.moodMe}</span><b>Sen</b></div>` : ''}${d.moodHim ? `<div><span>${d.moodHim}</span><b>${P}</b></div>` : ''}</div>` });
+  if (d.letters.length || d.reasons.length) S.push({ bg: 'w9', html: `<p class="w-kicker">Kalpten</p>
+    <p class="w-sub"><b>${d.letters.length}</b> mektup · <b>${d.reasons.length}</b> “seni neden seviyorum”</p>
+    ${d.reason ? `<p class="w-quote big">“${esc(d.reason.text)}”</p><p class="w-sub">— ${esc(nameOf(d.reason.author))}</p>` : ''}` });
+  if (d.compat !== null || d.bestScore) S.push({ bg: 'w10', html: `<p class="w-kicker">Oyunlarımız</p>
+    ${d.compat !== null ? `<p class="w-big">${d.compat}%</p><p class="w-label">uyumluyuz</p>` : ''}
+    ${d.bestScore ? `<p class="w-sub">Hafıza rekoru: <b>${mmss(d.bestScore.seconds)}</b> · ${esc(nameOf(d.bestScore.author))}</p>` : ''}` });
+  S.push({ bg: 'w11', html: `<p class="w-script">Seni seviyorum</p><p class="w-quote">${esc(state.s.love)}</p>
+    <p class="w-sub">${d.done ? `${d.n + 1}. ayımızda görüşmek üzere` : `${d.n}. ayımız ${ekDa(fmtDM(d.to))} tamamlanacak`}</p>
+    <button class="btn light" data-close>Kapat</button>` });
+  return S;
+}
+
+function story(slides, onClose) {
+  const o = document.createElement('div');
+  o.className = 'story';
+  o.innerHTML = `<div class="st-bars">${slides.map(() => '<span><i></i></span>').join('')}</div>
+    <button class="st-x" aria-label="Kapat">${ic('x')}</button><div class="st-slide"></div>`;
+  document.body.append(o);
+  requestAnimationFrame(() => o.classList.add('show'));
+  let i = 0, t = null;
+  const DUR = 6500;
+  const close = () => { clearTimeout(t); o.classList.remove('show'); setTimeout(() => o.remove(), 350); onClose?.(); };
+  const show = k => {
+    i = Math.max(0, Math.min(slides.length - 1, k));
+    o.className = `story show ${slides[i].bg}`;
+    const s = $('.st-slide', o);
+    s.innerHTML = `<div class="st-in">${slides[i].html}</div>`;
+    $$('.st-bars span', o).forEach((b, j) => { b.className = j < i ? 'done' : j === i ? 'run' : ''; });
+    $('[data-close]', s)?.addEventListener('click', e => { e.stopPropagation(); close(); });
+    clearTimeout(t);
+    if (i < slides.length - 1) t = setTimeout(() => show(i + 1), DUR);
+  };
+  o.addEventListener('click', e => {
+    if (e.target.closest('.st-x')) return close();
+    if (e.target.closest('[data-close]')) return;
+    const x = e.clientX / innerWidth;
+    show(x < .3 ? i - 1 : i + 1);
+  });
+  show(0);
+}
+async function openWrap(n) {
+  toast('Özet hazırlanıyor…');
+  try { const d = await wrapData(n); story(wrapSlides(d), () => {}); if (d.done) markWrap(n); hearts(20); }
+  catch (er) { toast(er.message); }
+}
+async function wraps(v) {
+  const total = monthsSoFar();
+  v.innerHTML = `${back()}${head('Aylık özetimiz', '', 'Her ay dönümünde o ayın hikâyesi hazırlanır')}
+    ${total ? Array.from({ length: total }, (_, k) => total - k).map(n => {
+      const { from, to } = monthRange(n), done = +to <= Date.now();
+      return `<button class="card wrap-item ${done ? '' : 'live'}" data-w="${n}">
+        <span class="wrap-n">${n}</span>
+        <span class="grow"><b>${n}. ayımız</b><br><span class="muted small">${fmtDM(from)} – ${fmtDM(to)}${done ? '' : ' · devam ediyor'}</span></span>
+        ${ic(done ? 'play' : 'sparkle')}</button>`;
+    }).join('') : empty('sparkle', 'Sevgili olduğunuz günden itibaren burada her ayın özeti olacak')}`;
+  $$('[data-w]', v).forEach(b => b.onclick = () => openWrap(+b.dataset.w));
+}
 
 // ================================================================== Fısıltı (mesajlaşma)
 let chatRefresh = null, rtStop = null, chatPoll = null;
@@ -1443,7 +1682,7 @@ async function more(v) {
     ['Her gün', [['fisilti', 'chat', 'Fısıltı', 'Sadece ikimizin sohbeti'], ['bahce', 'flower', 'Bahçemiz', 'Her gün bir çiçek'], ['selamlar', 'sun', 'Günaydın & iyi geceler', 'Saatine göre görünen notlar'], ['ruh-hali', 'smile', 'Ruh halimiz', 'Bugün nasılız']]],
     ['Oyunlar', [['bumuo', 'split', 'Bu mu, o mu?', 'Ne kadar uyumluyuz'], ['hafiza', 'cards', 'Hafıza oyunu', 'Fotoğraflarımızla, rekor kır'], ['test', 'quiz', 'Beni ne kadar tanıyorsun?', 'Birbirinize sorular']]],
     ['Sürprizler', [['surprizler', 'gift', 'Açılış sürprizi', 'Siteyi açınca karşısına çıkar'], ['kuponlar', 'ticket', 'Aşk kuponları', 'Kendi yazdığınız kuponlar']]],
-    ['Birlikte', [['muzik', 'music', 'Müziğimiz', 'Ortak playlist ve şarkılarımız'], ['ozel-gunler', 'calendar', 'Özel günler', 'Geri sayımlar'], ['ilkler', 'flag', 'İlklerimiz', 'Unutulmayacak ilkler'], ['yapacaklar', 'check', 'Yapacaklarımız', 'Hayal listemiz'], ['harita', 'pin', 'Haritamız', 'Gittiğimiz yerler'], ['kavanoz', 'jar', 'Sebep kavanozu', 'Seni neden seviyorum']]],
+    ['Birlikte', [['ozet', 'sparkle', 'Aylık özetimiz', 'Her ayın hikâyesi'], ['muzik', 'music', 'Müziğimiz', 'Ortak playlist ve şarkılarımız'], ['ozel-gunler', 'calendar', 'Özel günler', 'Geri sayımlar'], ['ilkler', 'flag', 'İlklerimiz', 'Unutulmayacak ilkler'], ['yapacaklar', 'check', 'Yapacaklarımız', 'Hayal listemiz'], ['harita', 'pin', 'Haritamız', 'Gittiğimiz yerler'], ['kavanoz', 'jar', 'Sebep kavanozu', 'Seni neden seviyorum']]],
     ...(state.admin ? [['Yönetim', [['admin', 'shield', 'Admin paneli', 'Ayarlar ve tüm içerik']]]] : []),
   ];
   v.innerHTML = `${head('Daha fazlası')}
@@ -1871,6 +2110,13 @@ function settings() {
       <label>Yeni şifre<input type="password" name="pw" minlength="6" autocomplete="new-password" required></label>
       <button class="btn small">${ic('key')}Şifreyi değiştir</button>
     </form>
+    <div class="card soft">
+      ${sectionTitle('sun', 'Görünüm')}
+      <div class="theme-pick">${[['auto', 'phone', 'Otomatik'], ['light', 'sun', 'Açık'], ['dark', 'moon', 'Koyu']].map(([k, i, l]) =>
+        `<button data-th="${k}" class="${getTheme() === k ? 'on' : ''}">${ic(i)}${l}</button>`).join('')}</div>
+      <p class="muted small" style="margin:8px 0 0">Otomatik: telefonun gece/gündüz ayarına uyar.</p>
+    </div>
+    <div class="card soft" id="lockBox"></div>
     <div class="card soft" id="pushBox">
       ${sectionTitle('bell', 'Telefon bildirimleri')}
       <p class="small" id="pushStatus">Kontrol ediliyor…</p>
@@ -1886,6 +2132,28 @@ function settings() {
     </div>
     <button class="btn ghost danger" id="out">${ic('logout')}Çıkış yap</button>`);
   $('#toAdmin', m)?.addEventListener('click', () => m.close());
+
+  // görünüm
+  $$('[data-th]', m).forEach(b => b.onclick = () => {
+    try { localStorage.setItem(THEME_KEY, b.dataset.th); } catch {}
+    applyTheme(b.dataset.th);
+    $$('[data-th]', m).forEach(x => x.classList.toggle('on', x === b));
+  });
+  // uygulama kilidi
+  const renderLock = () => {
+    const c = lockCfg(), box = $('#lockBox', m);
+    box.innerHTML = `${sectionTitle('lock', 'Uygulama kilidi')}
+      ${c ? `<p class="small" style="margin:0 0 10px">Açık · şifre sadece bu telefonda saklanır.</p>
+        <label>Şifre ne zaman sorulsun?<select id="lkDelay">${LOCK_DELAYS.map(([s, l]) => `<option value="${s}" ${c.delay === s ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div class="prompt-btns"><button class="btn small ghost" id="lkChange">Şifreyi değiştir</button><button class="link danger" id="lkOff">Kilidi kapat</button></div>`
+      : `<p class="muted small" style="margin:0 0 10px">Kapalı. Açarsan uygulamaya girerken 4 haneli şifre sorulur. İstediğin zaman kapatabilirsin.</p>
+        <button class="btn small" id="lkOn">${ic('lock')}Kilidi aç</button>`}`;
+    $('#lkOn', box)?.addEventListener('click', async () => { if (await setupLock()) { toast('Uygulama kilidi açıldı'); renderLock(); } });
+    $('#lkOff', box)?.addEventListener('click', async () => { if (await verifyPin()) { saveLock(null); toast('Uygulama kilidi kapatıldı'); renderLock(); } });
+    $('#lkChange', box)?.addEventListener('click', async () => { if (await verifyPin() && await setupLock()) { toast('Şifre değişti'); renderLock(); } });
+    $('#lkDelay', box)?.addEventListener('change', e => { const cfg = lockCfg(); if (cfg) { cfg.delay = +e.target.value; saveLock(cfg); toast('Kaydedildi'); } });
+  };
+  renderLock();
 
   const renderPush = async () => {
     const st = await pushState().catch(() => 'unsupported');

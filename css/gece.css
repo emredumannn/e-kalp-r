@@ -1,0 +1,79 @@
+/* =====================================================================
+   Gece modu — <html data-theme="dark">
+   ===================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #161117;
+  --blush: #2b1f29;
+  --blush-2: #211821;
+  --card: #1e171e;
+  --pink: #c9839c;
+  --pink-d: #df98b1;
+  --rose: #e490ae;
+  --rose-d: #f3bdd0;
+  --ink: #f1e6eb;
+  --muted: #a6929c;
+  --line: #34262f;
+  --gold: #d8b48c;
+  --paper: #231a21;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 30px -14px rgba(0, 0, 0, .7);
+  --surface: #261c25;
+}
+[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 500px at 0% -10%, #2a1724 0, transparent 60%),
+    radial-gradient(900px 500px at 110% 20%, #1f1828 0, transparent 55%),
+    var(--bg);
+}
+[data-theme="dark"] .demo { background: #3a2e1c; color: #e9cf9f; }
+[data-theme="dark"] .top, [data-theme="dark"] .chat-head, [data-theme="dark"] .composer-wrap { background: rgba(22, 17, 23, .85); border-color: var(--line); }
+[data-theme="dark"] .tabs { background: rgba(26, 20, 26, .92); border-color: var(--line); }
+[data-theme="dark"] .card { border-color: var(--line); }
+[data-theme="dark"] input, [data-theme="dark"] textarea, [data-theme="dark"] select { background-color: var(--surface); border-color: var(--line); color: var(--ink); }
+[data-theme="dark"] input::placeholder, [data-theme="dark"] textarea::placeholder { color: #7d6a74; }
+
+/* yüzeyler */
+[data-theme="dark"] .counter, [data-theme="dark"] .news { background: linear-gradient(170deg, #221922 0%, #2a1c27 100%); }
+[data-theme="dark"] .boxes div, [data-theme="dark"] .flower-pick button, [data-theme="dark"] .g-day,
+[data-theme="dark"] .chip, [data-theme="dark"] .seal, [data-theme="dark"] .tot-opt, [data-theme="dark"] .q-opts button,
+[data-theme="dark"] .msg.them .bubble, [data-theme="dark"] .emoji-pick button.on, [data-theme="dark"] .seg button.on,
+[data-theme="dark"] .modal, [data-theme="dark"] .m-heart { background: var(--surface); }
+[data-theme="dark"] .chip.on { background: var(--rose); color: #24121b; }
+[data-theme="dark"] .seg button.on { color: var(--rose-d); }
+[data-theme="dark"] .pray-note { background: linear-gradient(135deg, #1e171e, #231c2c); }
+[data-theme="dark"] .letter-note { background: linear-gradient(135deg, #1e171e, #2a201b); }
+[data-theme="dark"] .envelope, [data-theme="dark"] .env-open { background: linear-gradient(135deg, #251b22, #2b1e27); border-color: var(--line); }
+[data-theme="dark"] .env-open { background: none; }
+[data-theme="dark"] .envelope.locked { background: repeating-linear-gradient(135deg, #221821 0 12px, #281c26 12px 24px); }
+[data-theme="dark"] .coupon { background: linear-gradient(120deg, #221922 0, #2a1c27 100%); border-color: var(--line); }
+[data-theme="dark"] .c-main::before, [data-theme="dark"] .c-main::after { background: var(--bg); }
+[data-theme="dark"] .ring { background: radial-gradient(closest-side, var(--card) 78%, transparent 79% 100%), conic-gradient(var(--rose) calc(var(--p) * 1%), var(--blush) 0); }
+[data-theme="dark"] .nazar-read.show { background: rgba(30, 30, 50, .55); border-color: #2c3350; }
+[data-theme="dark"] .nazar-title { color: #8fb5ee; }
+[data-theme="dark"] .nazar-text { color: #d9e3f7; }
+[data-theme="dark"] .prayer .ar { color: #f1e6eb; }
+[data-theme="dark"] .q-opts button.right { background: #1d3325; border-color: #4f8a60; color: #a9dcb6; }
+[data-theme="dark"] .q-opts button.wrong { background: #3a1d27; border-color: #9c4b64; color: #f0a9bd; }
+[data-theme="dark"] .q-mine li.right { color: #a9dcb6; }
+[data-theme="dark"] .q-mine li.wrong { color: #f0a9bd; }
+[data-theme="dark"] .day-sep span { background: var(--blush); }
+[data-theme="dark"] .bud { border-color: #6b4a59; }
+[data-theme="dark"] .polaroid { background: #efe7ea; }
+[data-theme="dark"] .polaroid .pol-cap { color: #3a2a32; }
+[data-theme="dark"] .toast { background: rgba(241, 230, 235, .95); color: #24161d; }
+[data-theme="dark"] .modal-back { background: rgba(0, 0, 0, .55); }
+[data-theme="dark"] .paper-modal { background: var(--paper) !important; background-image: repeating-linear-gradient(transparent 0 31px, #33262e 31px 32px) !important; }
+[data-theme="dark"] .letter-modal { background: transparent !important; }
+[data-theme="dark"] .btn.light { background: #fff; color: var(--rose); }
+[data-theme="dark"] .btn { color: #fff; }
+[data-theme="dark"] .bell-n { box-shadow: 0 0 0 2px var(--bg); }
+[data-theme="dark"] .mem .dot { border-color: var(--bg); }
+[data-theme="dark"] .leaflet-container { filter: brightness(.8) contrast(1.05); }
+[data-theme="dark"] .err { color: #ff8fab; }
+[data-theme="dark"] .icon-btn.danger, [data-theme="dark"] .link.danger, [data-theme="dark"] .btn.danger { color: #ff8fab; }
+
+/* tema seçici */
+.theme-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: var(--blush); padding: 4px; border-radius: 14px; }
+.theme-pick button { padding: 9px 4px; border-radius: 11px; font-weight: 600; font-size: .85rem; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.theme-pick button .ic { width: 16px; height: 16px; }
+.theme-pick button.on { background: var(--card); color: var(--rose-d); box-shadow: 0 2px 8px -4px rgba(0, 0, 0, .3); }

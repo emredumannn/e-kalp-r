@@ -16,8 +16,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Great+Vibes&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    // Tema: sayfa çizilmeden önce uygula (beyaz yanıp sönme olmasın)
+    (function () {
+      try {
+        var t = localStorage.getItem('ekalpr-theme') || 'auto';
+        var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/sohbet-oyun.css">
+  <link rel="stylesheet" href="css/gece.css">
+  <link rel="stylesheet" href="css/ozet-kilit.css">
 </head>
 <body>
   <div class="loading"><span class="heart beat">❤</span></div>
