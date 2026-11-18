@@ -85,9 +85,23 @@ function modal(html, cls = '') {
 }
 const closeModals = () => $$('.modal-back').forEach(m => m.close?.() ?? m.remove());
 
+// İmzalı fotoğraf linkleri 6 saat geçerli; 5 saatte bir yenile
+let urlsAt = Date.now();
 async function loadUrls(paths) {
+  if (Date.now() - urlsAt > 5 * 3600e3) { state.urls = {}; urlsAt = Date.now(); }
   const need = [...new Set(paths.filter(p => p && !state.urls[p]))];
   if (need.length) Object.assign(state.urls, await api.signedUrls(need));
+}
+// Bir dosyayı sadece hiçbir yerde (anı, galeri, mesaj) kullanılmıyorsa depodan sil
+async function removeUnused(paths) {
+  paths = paths.filter(Boolean);
+  if (!paths.length) return;
+  try {
+    const [msgs, phs, mems] = await Promise.all([api.list('messages', 1000), api.list('photos', 1000), api.list('memories', 1000)]);
+    const used = new Set([...msgs.flatMap(m => [m.photo, m.audio]), ...phs.map(p => p.path), ...mems.flatMap(m => m.photos ?? [])]);
+    const free = paths.filter(p => !used.has(p));
+    if (free.length) await api.removeFiles(free);
+  } catch {}
 }
 const img = p => state.urls[p] ? `<img src="${esc(state.urls[p])}" loading="lazy" alt="">` : `<div class="img-missing">${ic('image')}</div>`;
 
@@ -301,7 +315,7 @@ async function editForm(table, row = null, { defaults = {}, extra = {}, after, h
       b.textContent = 'Kaydediliyor…';
       if (row) await api.update(table, row.id, data);
       else await api.insert(table, { ...data, ...extra });
-      if (removed.size && row) await api.removeFiles([...removed]);
+      if (removed.size && row) await removeUnused([...removed]);
       m.close();
       if (!row) hearts(12);
       toast(row ? 'Değişiklik kaydedildi' : `${sc.one} eklendi`);
@@ -328,8 +342,9 @@ document.addEventListener('click', async e => {
     if (!r || !confirm(`Bu ${SCHEMA[t].one.toLocaleLowerCase('tr')} silinsin mi? Geri alınamaz.`)) return;
     try {
       await api.remove(t, id);
-      if (t === 'memories') await api.removeFiles(r.photos ?? []);
-      if (t === 'photos') await api.removeFiles([r.path]);
+      if (t === 'memories') await removeUnused(r.photos ?? []);
+      if (t === 'photos') await removeUnused([r.path]);
+      if (t === 'messages') await removeUnused([r.photo, r.audio]);
       closeModals(); toast('Silindi'); rerender();
     } catch (er) { toast(er.message); }
   }
@@ -1041,7 +1056,7 @@ async function chat(v) {
       });
       if (a === 'del') {
         if (!confirm('Bu mesaj silinsin mi?')) return;
-        try { await api.remove('messages', m.id); await api.removeFiles([m.audio].filter(Boolean)); render(); }
+        try { await api.remove('messages', m.id); await removeUnused([m.photo, m.audio]); render(); }
         catch (er) { toast(er.message); }
       }
     });
@@ -1942,6 +1957,9 @@ if ('serviceWorker' in navigator && !DEMO) {
   // Bildirime dokununca açık uygulamayı ilgili sayfaya götür
   navigator.serviceWorker.addEventListener('message', e => { if (e.data?.nav) location.hash = e.data.nav; });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { try { navigator.clearAppBadge?.(); } catch {} if (state.me) refreshBell(); }
+    if (document.visibilityState === 'visible') {
+      try { navigator.clearAppBadge?.(); } catch {}
+      if (state.me) { refreshBell(); refreshChatBadge(); if (Date.now() - urlsAt > 5 * 3600e3) rerender(); }
+    }
   });
 }
