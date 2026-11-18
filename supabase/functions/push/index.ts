@@ -70,7 +70,7 @@ const CATEGORY: Record<string, string> = {
   coupons: 'fun', coupons_used: 'fun', quiz_questions: 'fun',
   memories: 'shares', photos: 'shares', reasons: 'shares', moods: 'shares', firsts: 'shares',
   todos: 'shares', songs: 'shares', places: 'shares', special_days: 'shares',
-  messages: 'messages', memory_scores: 'fun',
+  messages: 'messages', memory_scores: 'fun', letters_open: 'letters',
 };
 // Aynı türden bildirimler arasında en az bu kadar saniye
 const THROTTLE: Record<string, number> = { photos: 120, thoughts: 3 * 3600, moods: 1800, prayer_logs: 300, messages: 8, memory_scores: 600 };
@@ -86,6 +86,7 @@ function message(kind: string, r: Record<string, any>, name: (id: string) => str
       to: r.recipient, title: `${who} sana bir mektup yazdı`, url: '#/mektuplar',
       body: r.open_at && new Date(r.open_at) > new Date() ? `Mühürlü · ${fmtDate(r.open_at)}’da açılacak` : short(r.title),
     };
+    case 'letters_open': return { to: r.recipient, title: 'Mühürlü mektubun açıldı', body: `${who}’dan: ${short(r.title)}`, url: '#/mektuplar' };
     case 'photos': return { title: `${who} yeni fotoğraf ekledi`, body: short(r.caption || r.album), url: '#/galeri' };
     case 'reasons': return { title: `${who} kavanoza yeni bir sebep attı`, body: short(r.text), url: '#/kavanoz' };
     case 'prayer_logs': return { title: `${who} senin için dua etti`, body: `${r.prayer_title}${r.count > 1 ? ` · ${r.count} kez` : ''}`, url: '#/' };
