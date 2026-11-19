@@ -34,6 +34,11 @@ export const ORDER = {
   daily_answers: ['day', false],
   comfort_items: ['created_at', false],
   support_pings: ['created_at', false],
+  star_maps: ['event_at', false],
+  drawings: ['updated_at', false],
+  shared_media: ['created_at', false],
+  media_quizzes: ['created_at', false],
+  media_quiz_attempts: ['created_at', false],
 };
 
 function fail(error) {
@@ -98,6 +103,28 @@ const real = {
     const path = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
     const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType: type, cacheControl: '31536000' });
     fail(error); return path;
+  },
+  async getOne(table, id) { const { data, error } = await sb.from(table).select('*').eq('id', id).maybeSingle(); fail(error); return data; },
+  /**
+   * Yayın kanalı (canlı çizim gibi). Önce sadece ikimize açık "özel kanal" dener;
+   * olmazsa normal kanala düşer. handlers: { olayAdı: (payload) => {} }
+   */
+  channel(name, handlers) {
+    let ch = null, closed = false;
+    const open = priv => {
+      ch = sb.channel(name, { config: { private: priv, broadcast: { self: false, ack: false } } });
+      Object.entries(handlers).forEach(([event, fn]) => ch.on('broadcast', { event }, ({ payload }) => fn(payload)));
+      ch.subscribe(status => {
+        if (status === 'SUBSCRIBED') handlers._status?.('online');
+        if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && priv && !closed) { sb.removeChannel(ch); open(false); }
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') handlers._status?.('offline');
+      });
+    };
+    open(true);
+    return {
+      send: (event, payload) => ch?.send({ type: 'broadcast', event, payload }).catch?.(() => {}),
+      close: () => { closed = true; if (ch) sb.removeChannel(ch); },
+    };
   },
   // Gerçek zamanlı: tablo değişince cb çağrılır; geri dönen fonksiyon dinlemeyi bırakır
   subscribe(table, cb) {
@@ -186,6 +213,17 @@ const store = {
     { id: 'cf3', author: RABIA, mood: 'konus', kind: 'call', body: '+90 500 000 00 00', media: null, audio_secs: null, ref_id: null, created_at: day(-2) },
   ],
   support_pings: [],
+  star_maps: [{ id: 'st1', author: EMRE, title: 'Seni ilk gördüğüm an', event_at: '2026-11-07T16:00:00.000Z', tz: 'Europe/Istanbul', lat: 41.0082, lng: 28.9784, location_label: 'İstanbul', note: 'O akşam gökyüzü tam böyleydi.', image_path: null, map_type: 'accurate', created_at: day(-1) }],
+  drawings: [],
+  shared_media: [
+    { id: 'sm1', author: RABIA, kind: 'film', title: 'Notebook', status: 'bitti', finished_on: localDay(-3), note: 'Çok ağladık', created_at: day(-5) },
+    { id: 'sm2', author: EMRE, kind: 'kitap', title: 'Küçük Prens', status: 'devam', finished_on: null, note: '', created_at: day(-4) },
+    { id: 'sm3', author: RABIA, kind: 'dizi', title: 'Friends', status: 'plan', finished_on: null, note: '', created_at: day(-2) },
+  ],
+  media_quizzes: [
+    { id: 'mq1', author: RABIA, media_id: 'sm1', title: 'Notebook testi', questions: [{ q: 'Noah evi kimin için yeniden yaptı?', o: ['Allie', 'Annesi', 'Kendisi'] }, { q: 'Film hangi mevsimde başlar?', o: ['Yaz', 'Kış', 'İlkbahar'] }], answers: [0, 0], created_at: day(-2) },
+  ],
+  media_quiz_attempts: [],
   tot_answers: [
     { id: 'ta1', author: RABIA, qkey: 'b0', pick: 0, created_at: day(-1) },
     { id: 'ta2', author: RABIA, qkey: 'b1', pick: 1, created_at: day(-1) },
@@ -197,6 +235,18 @@ const store = {
 function localDay(n) { const d = new Date(Date.now() + n * 864e5); return new Date(+d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
 const DEMO_RPC = {
   touch_seen: () => day(-1.5),
+  media_quizzes_for_me: () => store.media_quizzes.filter(q => q.author !== EMRE).map(q => {
+    const a = store.media_quiz_attempts.find(x => x.quiz_id === q.id && x.author === EMRE);
+    const { answers, ...rest } = q;
+    return { ...rest, attempted: !!a, score: a?.score ?? null, total: a?.total ?? null, picks: a?.picks ?? null, answers: a ? answers : null };
+  }),
+  media_quiz_submit: ({ qid, picks }) => {
+    const q = store.media_quizzes.find(x => x.id === qid);
+    if (store.media_quiz_attempts.some(a => a.quiz_id === qid && a.author === EMRE)) throw new Error('Bu testi zaten çözdün');
+    const score = q.answers.filter((a, i) => picks[i] === a).length;
+    store.media_quiz_attempts.push({ id: id(), quiz_id: qid, author: EMRE, picks, score, total: q.answers.length, created_at: new Date().toISOString() });
+    return { score, total: q.answers.length, answers: q.answers };
+  },
   set_my_prefs: ({ prefs }) => { store.profiles[0].prefs = prefs; },
   daily_for_me: ({ d }) => {
     const m = store.daily_answers.find(a => a.author === EMRE && a.day === d), t = store.daily_answers.find(a => a.author !== EMRE && a.day === d);
@@ -242,6 +292,7 @@ const demo = {
     if (table === 'quiz_questions') rows = rows.filter(q => q.author === EMRE);
     if (table === 'surprises') rows = rows.filter(s => s.author === EMRE || s.recipient === EMRE);
     if (table === 'daily_answers') rows = rows.filter(a => a.author === EMRE);
+    if (table === 'media_quizzes') rows = rows.filter(q => q.author === EMRE);
     const cmp = (a, b) => (typeof a[col] === 'number' ? a[col] - b[col] : String(a[col] ?? '').localeCompare(String(b[col] ?? '')));
     return rows.sort((a, b) => asc ? cmp(a, b) : cmp(b, a));
   },
@@ -249,6 +300,7 @@ const demo = {
     if (table === 'flowers' && store.flowers.some(f => f.author === EMRE && f.day === row.day)) throw new Error('Bugünün çiçeğini zaten gönderdin');
     const r = { id: id(), author: EMRE, created_at: new Date().toISOString(), ...row };
     if (table === 'memories') r.photos ??= [];
+    if (table === 'drawings') Object.assign(r, { strokes: [], image_path: null, updated_at: r.created_at, ...row });
     if (table === 'messages') Object.assign(r, { body: null, photo: null, audio: null, audio_secs: null, hearted: false, read_at: null, ...row });
     store[table].push(r); return r;
   },
@@ -264,6 +316,8 @@ const demo = {
   async keepOnlyPush() {},
   async upload(blob) { const p = id(); blobs[p] = URL.createObjectURL(blob); return p; },
   subscribe() { return () => {}; },
+  async getOne(table, rid) { return structuredClone(store[table].find(r => r.id === rid) ?? null); },
+  channel(name, handlers) { setTimeout(() => handlers._status?.('online'), 100); return { send() {}, close() {} }; },
   async signedUrls(paths) { const m = {}; paths.forEach(p => { if (blobs[p]) m[p] = blobs[p]; }); return m; },
   async removeFiles() {},
 };

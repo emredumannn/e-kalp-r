@@ -4,6 +4,10 @@ import { CATEGORIES } from './dualar.js';
 import { ic, flower, FLOWERS, nazar } from './icons.js';
 import { TOT } from './oyunlar.js';
 import { QUESTIONS } from './sorular.js';
+import { loadSky, drawSky, fmtCoord, CITIES } from './yildiz.js';
+import { DrawBoard } from './cizim.js';
+import { GardenScene, flowerImages } from './bahce.js';
+import { createWorld } from './dunya.js';
 
 // ================================================================== yardımcılar
 const $ = (s, el = document) => el.querySelector(s);
@@ -99,8 +103,10 @@ async function removeUnused(paths) {
   paths = paths.filter(Boolean);
   if (!paths.length) return;
   try {
-    const [msgs, phs, mems, cf] = await Promise.all([api.list('messages', 1000), api.list('photos', 1000), api.list('memories', 1000), api.list('comfort_items', 1000).catch(() => [])]);
-    const used = new Set([...msgs.flatMap(m => [m.photo, m.audio]), ...phs.map(p => p.path), ...mems.flatMap(m => m.photos ?? []), ...cf.map(c => c.media)]);
+    const [msgs, phs, mems, cf, sm, dr] = await Promise.all([api.list('messages', 1000), api.list('photos', 1000), api.list('memories', 1000),
+      api.list('comfort_items', 1000).catch(() => []), api.list('star_maps', 1000).catch(() => []), api.list('drawings', 1000).catch(() => [])]);
+    const used = new Set([...msgs.flatMap(m => [m.photo, m.audio]), ...phs.map(p => p.path), ...mems.flatMap(m => m.photos ?? []),
+      ...cf.map(c => c.media), ...sm.map(s => s.image_path), ...dr.map(d => d.image_path)]);
     const free = paths.filter(p => !used.has(p));
     if (free.length) await api.removeFiles(free);
   } catch {}
@@ -221,6 +227,20 @@ const SCHEMA = {
     { k: 'a', l: 'Birinci seçenek', req: 1, ph: 'Deniz', half: 1 },
     { k: 'b', l: 'İkinci seçenek', req: 1, ph: 'Dağ', half: 1 },
   ] },
+  star_maps: { one: 'Yıldız haritası', icon: 'star', label: r => r.title, fields: [
+    { k: 'title', l: 'Başlık', req: 1 },
+    { k: 'location_label', l: 'Yer adı' },
+    { k: 'note', l: 'Not', t: 'textarea', rows: 3 },
+  ] },
+  drawings: { one: 'Çizim', icon: 'brush', label: r => r.title, fields: [{ k: 'title', l: 'Adı', req: 1 }] },
+  shared_media: { one: 'Film/kitap', icon: 'film', label: r => `${r.title} · ${MEDIA_KIND[r.kind]?.[0] ?? ''}`, fields: [
+    { k: 'kind', l: 'Tür', t: 'select', opts: [['film', 'Film'], ['dizi', 'Dizi'], ['kitap', 'Kitap']], def: 'film' },
+    { k: 'title', l: 'Adı', req: 1, ph: 'Notebook' },
+    { k: 'status', l: 'Durum', t: 'select', opts: [['plan', 'Sırada'], ['devam', 'Devam ediyor'], ['bitti', 'Bitti']], def: 'plan', half: 1 },
+    { k: 'finished_on', l: 'Bitirdiğimiz gün', t: 'date', half: 1 },
+    { k: 'note', l: 'Not', ph: 'İsteğe bağlı' },
+  ] },
+  media_quizzes: { one: 'Test', icon: 'quiz', label: r => r.title, fields: [], custom: () => toast('Testler gönderildikten sonra değiştirilemez; silip yeniden hazırlayabilirsin') },
   comfort_items: { one: 'Destek kartı', icon: 'heart', label: r => `${r.kind} · ${r.body ?? ''}`, fields: [], custom: () => toast('Kartı silip yeniden hazırlayabilirsin') },
   memory_scores: { one: 'Skor', icon: 'cards', label: r => `${mmss(r.seconds)} · ${r.moves} hamle · ${r.pairs} çift`, fields: [] },
   special_days: { one: 'Özel gün', icon: 'calendar', label: r => r.title, fields: [
@@ -349,6 +369,8 @@ document.addEventListener('click', async e => {
       if (t === 'photos') await removeUnused([r.path]);
       if (t === 'messages') await removeUnused([r.photo, r.audio]);
       if (t === 'comfort_items') await removeUnused([r.media]);
+      if (t === 'star_maps' || t === 'drawings') await removeUnused([r.image_path]);
+      if (t === 'star_maps' && location.hash.startsWith('#/yildizlar/')) location.hash = '#/yildizlar';
       closeModals(); toast('Silindi'); rerender();
     } catch (er) { toast(er.message); }
   }
@@ -533,11 +555,11 @@ function shell() {
 }
 
 const MORE = ['ruh-hali', 'ilkler', 'yapacaklar', 'sarkilar', 'muzik', 'harita', 'kavanoz', 'admin', 'bahce', 'kuponlar', 'test',
-  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet', 'gunun-sorusu', 'zor-gun'];
+  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet', 'gunun-sorusu', 'zor-gun', 'yildizlar', 'cizim', 'sampiyona', 'dunya'];
 const ROUTES = {
   '': home, anilar: memories, mektuplar: letters, galeri: gallery, dualar: prayers, daha: more,
   'ruh-hali': moods, ilkler: firsts, yapacaklar: todos, sarkilar: songs, muzik: songs, harita: map, kavanoz: jar, admin,
-  bahce: garden, kuponlar: coupons, test: quiz, 'ozel-gunler': specialDays, surprizler: surprises, selamlar: greetings,
+  bahce: gardenLive, kuponlar: coupons, yildizlar: starsPage, cizim: drawPage, sampiyona: champPage, dunya: worldPage, test: quiz, 'ozel-gunler': specialDays, surprizler: surprises, selamlar: greetings,
   fisilti: chat, bumuo: thisOrThat, hafiza: memoryGame, ozet: wraps, 'gunun-sorusu': dailyPage, 'zor-gun': comfort,
 };
 async function route() {
@@ -549,6 +571,9 @@ async function route() {
   $$('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   document.body.classList.toggle('is-home', fn === home);
   document.body.classList.toggle('is-chat', fn === chat);
+  document.body.classList.toggle('is-world', fn === worldPage);
+  try { pageCleanup?.(); } catch {}
+  pageCleanup = null;
   if (fn !== chat) { chatRefresh = null; clearInterval(chatPoll); playing?.audio.pause(); playing = null; }
   $$('.modal-back').forEach(m => m.remove());
   const v = $('#view');
@@ -854,11 +879,12 @@ let actCache = null;
 async function loadActivity(force = false) {
   if (!force && actCache && Date.now() - actCache.t < 20000) return actCache.items;
   const lim = 60;
-  const [mems, letterRows, locked, photos, reasons, logs, moods, firsts, todos, songs, places, thoughts, flowers, coupons, quizQ, days, totA, mScores, pingRows] = await Promise.all([
+  const [mems, letterRows, locked, photos, reasons, logs, moods, firsts, todos, songs, places, thoughts, flowers, coupons, quizQ, days, totA, mScores, pingRows, skyRows, drawRows, mediaRows, mQuiz] = await Promise.all([
     api.list('memories', lim), api.list('letters', lim), api.rpc('locked_letters'), api.list('photos', 200), api.list('reasons', lim),
     api.list('prayer_logs', lim), api.list('moods', lim), api.list('firsts', lim), api.list('todos', lim), api.list('songs', lim),
     api.list('places', lim), api.list('thoughts', 300), api.list('flowers', 200), api.list('coupons', lim), api.rpc('quiz_for_me'), api.list('special_days', lim),
     api.list('tot_answers', 300), api.list('memory_scores', lim), api.list('support_pings', lim),
+    api.list('star_maps', lim), api.list('drawings', lim), api.list('shared_media', lim), api.rpc('media_quizzes_for_me'),
   ].map(p => p.catch(() => [])));
   const items = [];
   const cutoff = Date.now() - 14 * 864e5;
@@ -887,6 +913,10 @@ async function loadActivity(force = false) {
   byDay(quizQ.filter(q => q.choice === null), 'quiz', n => `sana ${n} yeni soru sordu`, '#/test');
   days.filter(his).forEach(d => add(d.created_at, 'calendar', `bir özel gün ekledi: “${esc(d.title)}”`, '#/ozel-gunler'));
   byDay(totA.filter(his), 'split', n => `“Bu mu, o mu?”da ${n} soru cevapladı`, '#/bumuo');
+  skyRows.filter(his).forEach(s => add(s.created_at, 'star', `bir yıldız haritası oluşturdu: “${esc(s.title)}”`, `#/yildizlar/${s.id}`));
+  drawRows.filter(his).forEach(d => add(d.created_at, 'brush', `yeni bir çizim başlattı: “${esc(d.title)}”`, `#/cizim/${d.id}`));
+  mediaRows.filter(his).forEach(m => add(m.created_at, 'film', `listeye ekledi: “${esc(m.title)}”`, '#/sampiyona'));
+  (mQuiz ?? []).filter(q => !q.attempted).forEach(q => add(q.created_at, 'crown', `sana bir test hazırladı: “${esc(q.title)}”`, '#/sampiyona'));
   pingRows.filter(his).forEach(p => add(p.created_at, 'heart', `biraz zor bir gün geçirdiğini söyledi${p.mood ? ` · ${esc(moodName(p.mood))}` : ''}`, '#/fisilti'));
   mScores.filter(his).forEach(s => add(s.created_at, 'cards', `hafıza oyununu ${mmss(s.seconds)}’de bitirdi`, '#/hafiza'));
   items.sort((a, b) => b.at - a.at);
@@ -1791,6 +1821,432 @@ async function memoryGame(v) {
   });
 }
 
+// ================================================================== sayfa temizliği (animasyonlar, kanallar)
+let pageCleanup = null;
+
+// ================================================================== yıldız haritamız
+const SKY_TZ_OFFSET = '+03:00';   // Türkiye: kalıcı UTC+3
+async function starsPage(v, [id]) {
+  const rows = cache('star_maps', await api.list('star_maps'));
+  if (id) return starView(v, rows.find(r => r.id === id));
+  v.innerHTML = `${back()}${head('Yıldız haritamız', addBtn('add', 'Harita'), 'Önemli anlarımızda gökyüzü tam olarak nasıldı?')}
+    ${rows.length ? rows.map(r => `<a class="card sky-item" href="#/yildizlar/${r.id}">
+      <span class="sky-dot">${ic('star')}</span>
+      <span class="grow"><b>${esc(r.title)}</b><br><span class="muted small">${fmtDateTime(r.event_at)} · ${esc(r.location_label || '')}</span></span>
+      ${ic('chevron', 'chev')}</a>`).join('')
+      : `<div class="card empty">${ic('star', 'xl')}<p>İlk yıldız haritanızı oluşturun. Örneğin 7 Kasım 19:00, ilk gördüğün an.</p></div>`}
+    <p class="muted small center pad">Haritalar gerçek yıldız konumlarıyla hesaplanır (Hipparcos kataloğu, yaklaşık 4.000 yıldız).</p>`;
+  $('#add').onclick = () => starForm();
+}
+
+function starForm() {
+  const def = localISO(new Date(START)).slice(0, 16);
+  const m = modal(`<h2>Yeni yıldız haritası</h2>
+    <form>
+      <label>Başlık<input name="title" required value="Seni ilk gördüğüm an"></label>
+      <label>Tarih ve saat (Türkiye saati)<input type="datetime-local" name="at" required value="${def}"></label>
+      <label>Şehir<select name="city"><option value="">— Haritadan ya da koordinatla seç —</option>${CITIES.map(([n], i) => `<option value="${i}" ${n === 'İstanbul' ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <button type="button" class="btn small ghost" id="pickMap">${ic('pin')}Haritadan tam yer seç</button>
+      <div id="miniMap" class="mini-map" hidden></div>
+      <div class="row"><label>Enlem<input name="lat" type="number" step="any" required value="41.0082"></label><label>Boylam<input name="lng" type="number" step="any" required value="28.9784"></label></div>
+      <label>Yer adı<input name="place" value="İstanbul" placeholder="Ör. Moda sahili"></label>
+      <label>Not<textarea name="note" rows="2" placeholder="O an aklımızda kalan…"></textarea></label>
+      <label class="file">${ic('camera')} İsteğe bağlı fotoğraf<input type="file" accept="image/*"></label>
+      <div class="previews fresh"></div>
+      <p class="err"></p><button class="btn">Haritayı oluştur</button>
+    </form>`);
+  const f = $('form', m);
+  f.city.onchange = () => { const c = CITIES[+f.city.value]; if (c) { f.lat.value = c[1]; f.lng.value = c[2]; f.place.value = c[0]; } };
+  const fi = $('input[type=file]', f);
+  fi.onchange = () => { $('.fresh', f).innerHTML = [...fi.files].map(x => `<img src="${URL.createObjectURL(x)}" alt="">`).join(''); };
+  $('#pickMap', m).onclick = async () => {
+    const box = $('#miniMap', m); box.hidden = false;
+    const L = await loadLeaflet();
+    const map = L.map(box).setView([+f.lat.value || 39, +f.lng.value || 35], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+    let mk = L.marker([+f.lat.value, +f.lng.value]).addTo(map);
+    map.on('click', e => { f.lat.value = e.latlng.lat.toFixed(5); f.lng.value = e.latlng.lng.toFixed(5); mk.setLatLng(e.latlng); f.city.value = ''; if (!f.place.value) f.place.value = 'Seçilen yer'; });
+    setTimeout(() => map.invalidateSize(), 150);
+  };
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const b = $('button.btn', f), lat = +f.lat.value, lng = +f.lng.value;
+    if (!(lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180)) { $('.err', f).textContent = 'Koordinatlar geçersiz'; return; }
+    b.disabled = true;
+    try {
+      let image_path = null;
+      if (fi.files[0]) { b.textContent = 'Fotoğraf yükleniyor…'; image_path = await api.upload(await compress(fi.files[0])); }
+      const row = await api.insert('star_maps', {
+        title: f.title.value.trim(), event_at: new Date(f.at.value + ':00' + SKY_TZ_OFFSET).toISOString(), tz: 'Europe/Istanbul',
+        lat, lng, location_label: f.place.value.trim() || null, note: f.note.value.trim() || null, image_path, map_type: 'accurate',
+      });
+      m.close(); hearts(14); location.hash = `#/yildizlar/${row.id}`;
+    } catch (er) { $('.err', f).textContent = er.message; b.disabled = false; b.textContent = 'Haritayı oluştur'; }
+  };
+}
+
+async function starView(v, r) {
+  if (!r) { location.hash = '#/yildizlar'; return; }
+  if (r.image_path) await loadUrls([r.image_path]);
+  const when = new Date(r.event_at);
+  const sub = when.toLocaleString('tr-TR', { timeZone: r.tz || 'Europe/Istanbul', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  v.innerHTML = `${back('#/yildizlar', 'Haritalar')}
+    <div class="sky-poster"><canvas id="sky"></canvas><div class="sky-glints">${Array.from({ length: 7 }, (_, i) => `<i style="--d:${i * .7}s;left:${12 + i * 12}%;top:${10 + (i * 37) % 55}%"></i>`).join('')}</div></div>
+    <div class="sky-actions"><button class="btn" id="save">${ic('download')}Görsel olarak kaydet</button></div>
+    <div class="card">
+      <h3 class="serif">${esc(r.title)}</h3>
+      <p class="small">${esc(sub)} · ${esc(r.location_label || '')}<br><span class="muted">${fmtCoord(r.lat, r.lng)}</span></p>
+      ${r.note ? `<p class="quote">“${esc(r.note)}”</p>` : ''}
+      ${r.image_path ? `<button class="sky-photo" data-ph="${esc(r.image_path)}">${img(r.image_path)}</button>` : ''}
+      <p class="by">${esc(nameOf(r.author))} oluşturdu ${acts('star_maps', r)}</p>
+    </div>
+    <p class="muted small center pad">Gerçek gökyüzü: o an, o yerde ufkun üstündeki yıldızlar; merkez başucu noktası, kenar ufuk. Gezegenler ve Ay gösterilmez.</p>`;
+  const cv = $('#sky'), data = await loadSky();
+  try { await document.fonts.ready; } catch {}
+  drawSky(cv, data, { date: when, lat: r.lat, lng: r.lng, title: r.title, sub, place: [r.location_label, fmtCoord(r.lat, r.lng)].filter(Boolean).join('  ·  ') });
+  $$('[data-ph]', v).forEach(b => b.onclick = () => lightbox(b.dataset.ph));
+  $('#save').onclick = () => cv.toBlob(async blob => {
+    const file = new File([blob], `yildiz-haritasi-${dayOf(when)}.png`, { type: 'image/png' });
+    try {
+      if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: r.title }); return; }
+    } catch { return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+}
+
+// ================================================================== ortak çizim defteri
+const DRAW_COLORS = ['#3a2a32', '#b4587a', '#e8728f', '#f4a7bf', '#8a6fd1', '#5a8fd6', '#6fa86a', '#f2b24c', '#ffffff'];
+const DRAW_SIZES = [[.005, 'İnce'], [.012, 'Orta'], [.026, 'Kalın']];
+async function drawPage(v, [id]) {
+  if (id) return drawBoardPage(v, id);
+  const rows = cache('drawings', await api.list('drawings'));
+  await loadUrls(rows.map(r => r.image_path).filter(Boolean));
+  v.innerHTML = `${back()}${head('Çizim defterimiz', addBtn('add', 'Yeni çizim'), 'Aynı sayfaya iki telefondan birlikte çizin')}
+    ${rows.length ? `<div class="draw-grid">${rows.map(r => `<a class="draw-card" href="#/cizim/${r.id}">
+      <span class="draw-thumb">${r.image_path ? img(r.image_path) : ic('brush', 'xl')}</span>
+      <b>${esc(r.title)}</b><span class="muted small">${ago(r.updated_at)}</span></a>`).join('')}</div>`
+      : `<div class="card empty">${ic('brush', 'xl')}<p>İlk çiziminizi başlatın. ${esc(partnerName())} da aynı anda açarsa çizgileri canlı görürsünüz.</p></div>`}`;
+  $('#add').onclick = () => {
+    const m = modal(`<h2>Yeni çizim</h2><form><label>Adı<input name="t" value="Çizimimiz" required></label><button class="btn">Başla</button></form>`);
+    $('form', m).onsubmit = async e => {
+      e.preventDefault();
+      try { const row = await api.insert('drawings', { title: e.target.t.value.trim(), strokes: [] }); m.close(); location.hash = `#/cizim/${row.id}`; }
+      catch (er) { toast(er.message); }
+    };
+  };
+}
+
+async function drawBoardPage(v, id) {
+  const row = await api.getOne('drawings', id);
+  if (!row) { location.hash = '#/cizim'; return; }
+  cache('drawings', [row]);
+  const P = esc(partnerName());
+  v.innerHTML = `<div class="draw-page">
+    <div class="draw-head">${back('#/cizim', 'Çizimler')}<span class="grow"></span><span class="presence" id="pres"><i></i><span>${P} burada değil</span></span></div>
+    <h2 class="draw-title">${esc(row.title)}</h2>
+    <div class="paper-wrap"><canvas id="board" class="board"></canvas></div>
+    <div class="draw-tools">
+      <div class="swatches">${DRAW_COLORS.map((c, i) => `<button data-c="${c}" class="${i === 1 ? 'on' : ''}" style="--c:${c}" aria-label="Renk"></button>`).join('')}</div>
+      <div class="tool-row">
+        ${DRAW_SIZES.map(([w, l], i) => `<button data-w="${w}" class="size ${i === 1 ? 'on' : ''}" aria-label="${l}"><i style="--s:${4 + i * 5}px"></i></button>`).join('')}
+        <button id="eraser" class="tool" aria-label="Silgi">${ic('eraser')}</button>
+        <button id="undo" class="tool" aria-label="Geri al">${ic('undo')}</button>
+        <button id="redo" class="tool" aria-label="İleri al">${ic('redo')}</button>
+        <button id="clear" class="tool" aria-label="Temizle">${ic('trash')}</button>
+      </div>
+      <div class="tool-row end"><span class="muted small" id="saveSt">Hazır</span><button class="btn small" id="saveBtn">${ic('download')}Kaydet</button></div>
+    </div>
+  </div>`;
+  const draftKey = `draw-${id}`;
+  let dirty = false, saveT = null, seenAt = 0, snapDirty = false;
+  const st = t => { const s = $('#saveSt'); if (s) s.textContent = t; };
+  const board = new DrawBoard($('#board'), {
+    me: state.me.id,
+    onStroke: s => ch.send('stroke', s),
+    onLive: p => ch.send('live', p),
+    onChange: () => { dirty = true; snapDirty = true; st('Kaydediliyor…'); clearTimeout(saveT); saveT = setTimeout(save, 2500); try { localStorage.setItem(draftKey, JSON.stringify({ strokes: board.strokes, removed: [...board.removed] })); } catch {} },
+  });
+  board.merge(row.strokes ?? []);
+  try { const d = JSON.parse(localStorage.getItem(draftKey)); if (d) { d.removed?.forEach(x => board.removed.add(x)); board.merge(d.strokes); board.removeIds(d.removed ?? []); dirty = true; saveT = setTimeout(save, 800); } } catch {}
+  const ch = api.channel(`draw-${id}`, {
+    stroke: s => board.addRemote(s),
+    live: p => board.liveRemote(p),
+    remove: ({ ids }) => board.removeIds(ids),
+    restore: ({ strokes }) => board.restore(strokes),
+    hello: () => { const first = Date.now() - seenAt > 15000; seenAt = Date.now(); paintPres(); if (first) ch.send('hello', {}); },
+    _status: s => { if (s === 'online') ch.send('hello', {}); },
+  });
+  const paintPres = () => { const on = Date.now() - seenAt < 15000, p = $('#pres'); if (!p) return; p.classList.toggle('on', on); $('span', p).textContent = on ? `${partnerName()} burada, birlikte çiziyorsunuz` : `${partnerName()} burada değil`; };
+  const hb = setInterval(() => { ch.send('hello', {}); paintPres(); }, 7000);
+  async function save() {
+    if (!dirty) return;
+    try {
+      const srv = await api.getOne('drawings', id);
+      board.merge(srv?.strokes ?? []);
+      await api.update('drawings', id, { strokes: board.strokes, updated_at: new Date().toISOString() });
+      dirty = false; st('Kaydedildi'); try { localStorage.removeItem(draftKey); } catch {}
+    } catch { st('Bağlantı yok · çizim bu cihazda saklandı'); }
+  }
+  async function snapshot() {
+    const blob = await board.toBlob(900);
+    const old = (await api.getOne('drawings', id))?.image_path;
+    const path = await api.upload(blob, 'png', 'image/png');
+    await api.update('drawings', id, { image_path: path, strokes: board.strokes, updated_at: new Date().toISOString() });
+    if (old) api.removeFiles([old]).catch(() => {});
+    snapDirty = false; dirty = false;
+  }
+  $$('[data-c]', v).forEach(b => b.onclick = () => { board.color = b.dataset.c; board.eraser = false; $('#eraser').classList.remove('on'); $$('[data-c]', v).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('[data-w]', v).forEach(b => b.onclick = () => { board.width = +b.dataset.w; $$('[data-w]', v).forEach(x => x.classList.toggle('on', x === b)); });
+  $('#eraser').onclick = e => { board.eraser = !board.eraser; e.currentTarget.classList.toggle('on', board.eraser); };
+  const relay = r => { if (!r) return; if (r.remove) ch.send('remove', { ids: r.remove }); if (r.restore) ch.send('restore', { strokes: r.restore }); };
+  $('#undo').onclick = () => relay(board.undo());
+  $('#redo').onclick = () => relay(board.redoOne());
+  $('#clear').onclick = () => { if (!board.strokes.length) return; const r = board.clear(); relay(r); toast('Sayfa temizlendi · geri almak için ↶'); };
+  $('#saveBtn').onclick = async e => {
+    const b = e.currentTarget; b.disabled = true; st('Kaydediliyor…');
+    try { await snapshot(); st('Kaydedildi · çizimler listesinde'); hearts(10); } catch (er) { st(er.message); }
+    b.disabled = false;
+  };
+  pageCleanup = () => {
+    clearInterval(hb); clearTimeout(saveT); board.destroy(); ch.close();
+    if (dirty || snapDirty) (async () => { try { await save(); if (board.strokes.length) await snapshot(); } catch {} })();
+  };
+}
+
+// ================================================================== film & kitap şampiyonası
+const MEDIA_KIND = { film: ['Film', 'film'], dizi: ['Dizi', 'tv'], kitap: ['Kitap', 'book'] };
+const MEDIA_STATUS = { plan: 'Sırada', devam: 'Devam ediyor', bitti: 'Bitti' };
+let champTab = 'kutuphane', mediaKind = 'hepsi';
+const monthKey = d => localISO(new Date(d)).slice(0, 7);
+const monthName = k => new Date(k + '-15T12:00').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+
+async function champPage(v) {
+  const [media, forMe, mine, attempts] = await Promise.all([
+    api.list('shared_media'), api.rpc('media_quizzes_for_me').catch(() => []), api.list('media_quizzes').catch(() => []), api.list('media_quiz_attempts').catch(() => []),
+  ]);
+  cache('shared_media', media); cache('media_quizzes', mine);
+  const P = esc(partnerName()), titleOf = id => media.find(m => m.id === id)?.title;
+  const seg = `<div class="seg three"><button data-t="kutuphane" class="${champTab === 'kutuphane' ? 'on' : ''}">Kütüphane</button><button data-t="testler" class="${champTab === 'testler' ? 'on' : ''}">Testler</button><button data-t="sampiyon" class="${champTab === 'sampiyon' ? 'on' : ''}">Şampiyona</button></div>`;
+  let body = '';
+  if (champTab === 'kutuphane') {
+    const list = media.filter(m => mediaKind === 'hepsi' || m.kind === mediaKind);
+    const group = st => list.filter(m => m.status === st);
+    const item = m => `<div class="card media-item">
+      <span class="list-ic">${ic(MEDIA_KIND[m.kind][1])}</span>
+      <span class="grow"><b>${esc(m.title)}</b><br><span class="muted small">${MEDIA_KIND[m.kind][0]}${m.finished_on ? ` · ${fmtDate(m.finished_on)}` : ''}${m.note ? ` · ${esc(m.note)}` : ''}</span>
+        <span class="media-btns">${m.status !== 'bitti' ? `<button class="link" data-next="${m.id}">${m.status === 'plan' ? 'Başladık' : 'Bitirdik'}</button>` : `<button class="link" data-quiz="${m.id}">${ic('quiz')}Test hazırla</button>`}</span></span>
+      ${acts('shared_media', m)}</div>`;
+    body = `<div class="chips">${[['hepsi', 'Tümü'], ['film', 'Filmler'], ['dizi', 'Diziler'], ['kitap', 'Kitaplar']].map(([k, l]) => `<button class="chip ${mediaKind === k ? 'on' : ''}" data-k="${k}">${l}</button>`).join('')}</div>
+      ${['devam', 'plan', 'bitti'].map(st => group(st).length ? `${sectionTitle(st === 'bitti' ? 'check' : st === 'devam' ? 'play' : 'calendar', MEDIA_STATUS[st])}${group(st).map(item).join('')}` : '').join('')}
+      ${!list.length ? `<div class="card empty">${ic('film', 'xl')}<p>Birlikte izlediğiniz filmleri, dizileri ve okuduğunuz kitapları ekleyin. Bitenler için birbirinize test hazırlayın.</p></div>` : ''}`;
+  } else if (champTab === 'testler') {
+    const todo = forMe.filter(q => !q.attempted), done = forMe.filter(q => q.attempted);
+    const myAttempt = q => attempts.find(a => a.quiz_id === q.id && a.author !== state.me.id);
+    body = `<button class="btn" id="newQuiz">${ic('plus')}${P}’ya test hazırla</button>
+      ${sectionTitle('quiz', `${P} sana hazırladı`)}
+      ${todo.map(q => `<div class="card quiz-card fresh"><span class="grow"><b>${esc(q.title)}</b><br><span class="muted small">${q.questions.length} soru${titleOf(q.media_id) ? ` · ${esc(titleOf(q.media_id))}` : ''}</span></span><button class="btn small" data-solve="${q.id}">Çöz</button></div>`).join('')}
+      ${done.map(q => `<div class="card quiz-card"><span class="grow"><b>${esc(q.title)}</b><br><span class="muted small">${titleOf(q.media_id) ? esc(titleOf(q.media_id)) + ' · ' : ''}${q.score}/${q.total} doğru</span></span><button class="link" data-review="${q.id}">Cevaplar</button></div>`).join('')}
+      ${!forMe.length ? `<p class="muted small pad">${P} henüz test hazırlamadı.</p>` : ''}
+      ${sectionTitle('edit', 'Senin hazırladıkların')}
+      ${mine.map(q => { const a = myAttempt(q); return `<div class="card quiz-card"><span class="grow"><b>${esc(q.title)}</b><br><span class="muted small">${q.questions.length} soru · ${a ? `${P}: ${a.score}/${a.total}` : 'henüz çözmedi'}</span></span>${a ? '' : acts('media_quizzes', q)}</div>`; }).join('') || `<p class="muted small pad">Henüz test hazırlamadın.</p>`}`;
+  } else {
+    const season = monthKey(new Date());
+    const tally = (rows) => {
+      const t = {}; for (const id of Object.keys(state.people)) t[id] = { pts: 0, tests: 0, total: 0 };
+      rows.forEach(a => { const x = t[a.author] ??= { pts: 0, tests: 0, total: 0 }; x.pts += a.score; x.tests++; x.total += a.total; });
+      return t;
+    };
+    const winner = t => {
+      const ids = Object.keys(t).filter(k => state.people[k]);
+      const sorted = ids.sort((a, b) => t[b].pts - t[a].pts || t[b].tests - t[a].tests);
+      if (!sorted.length || !t[sorted[0]].tests) return null;
+      const [a, b] = sorted;
+      return b && t[a].pts === t[b].pts && t[a].tests === t[b].tests ? 'tie' : a;
+    };
+    const now = tally(attempts.filter(a => monthKey(a.created_at) === season));
+    const w = winner(now);
+    const months = [...new Set(attempts.map(a => monthKey(a.created_at)))].filter(k => k !== season).sort().reverse();
+    const ids = Object.keys(state.people);
+    const end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1), left = Math.ceil((end - Date.now()) / 864e5);
+    body = `<div class="card champ">
+        <p class="champ-kicker">${esc(monthName(season))} sezonu · ${left} gün kaldı</p>
+        ${w && w !== 'tie' ? `<div class="crown">${ic('crown')}</div><p class="champ-name">${esc(nameOf(w))}</p><p class="muted small">şu an önde</p>`
+          : w === 'tie' ? `<div class="crown">${ic('crown')}</div><p class="champ-name">Berabere</p><p class="muted small">taç paylaşılıyor</p>`
+          : `<p class="muted">Bu ay henüz test çözülmedi. Birbirinize test hazırlayın, çözdükçe puanlar burada.</p>`}
+        <div class="score-row">${ids.map(id => { const x = now[id] ?? { pts: 0, tests: 0, total: 0 }; return `<div class="${w === id ? 'lead' : ''}"><b>${x.pts}</b><span>${esc(nameOf(id))}</span><small>${x.tests} test · %${x.total ? Math.round(x.pts / x.total * 100) : 0}</small></div>`; }).join('')}</div>
+      </div>
+      <p class="muted small pad">Puanlar, karşı tarafın hazırladığı testlerdeki doğru cevaplardan gelir. Beraberlikte çözülen test sayısına bakılır.</p>
+      ${months.length ? `${sectionTitle('crown', 'Geçmiş şampiyonlar')}${months.map(k => { const t = tally(attempts.filter(a => monthKey(a.created_at) === k)), wk = winner(t); return `<div class="card row-item"><span class="list-ic">${ic('crown')}</span><span class="grow"><b>${wk === 'tie' ? 'Berabere' : esc(nameOf(wk))}</b><br><span class="muted small">${esc(monthName(k))} · ${ids.map(id => `${esc(nameOf(id))} ${t[id]?.pts ?? 0}`).join(' – ')}</span></span></div>`; }).join('')}` : ''}`;
+  }
+  v.innerHTML = `${back()}${head('Film & kitap şampiyonası', champTab === 'kutuphane' ? addBtn('add', 'Ekle') : '', 'Birlikte izlediklerimiz, okuduklarımız ve testlerimiz')}${seg}${body}`;
+  $$('.seg button', v).forEach(b => b.onclick = () => { champTab = b.dataset.t; rerender(); });
+  $$('[data-k]', v).forEach(b => b.onclick = () => { mediaKind = b.dataset.k; rerender(); });
+  $('#add')?.addEventListener('click', () => editForm('shared_media'));
+  $$('[data-next]', v).forEach(b => b.onclick = async () => {
+    const m = media.find(x => x.id === b.dataset.next), next = m.status === 'plan' ? 'devam' : 'bitti';
+    try { await api.update('shared_media', m.id, { status: next, finished_on: next === 'bitti' ? todayISO() : m.finished_on }); if (next === 'bitti') hearts(12); rerender(); } catch (er) { toast(er.message); }
+  });
+  $$('[data-quiz]', v).forEach(b => b.onclick = () => quizBuilder(media, b.dataset.quiz));
+  $('#newQuiz')?.addEventListener('click', () => quizBuilder(media));
+  $$('[data-solve]', v).forEach(b => b.onclick = () => quizSolver(forMe.find(q => q.id === b.dataset.solve), titleOf));
+  $$('[data-review]', v).forEach(b => b.onclick = () => quizReview(forMe.find(q => q.id === b.dataset.review)));
+}
+
+function quizBuilder(media, mediaId = '') {
+  const done = media.filter(m => m.status === 'bitti');
+  const m = modal(`<h2>${esc(partnerName())}’ya test</h2>
+    <form><label>Test adı<input name="title" required value="${esc(media.find(x => x.id === mediaId)?.title ? media.find(x => x.id === mediaId).title + ' testi' : '')}" placeholder="Notebook testi"></label>
+    <label>Hangi film / kitap?<select name="media"><option value="">Bağımsız test</option>${done.map(x => `<option value="${x.id}" ${x.id === mediaId ? 'selected' : ''}>${esc(x.title)} · ${MEDIA_KIND[x.kind][0]}</option>`).join('')}</select></label>
+    <div id="qs"></div>
+    <button type="button" class="btn small ghost" id="addQ">${ic('plus')}Soru ekle</button>
+    <p class="muted small">Doğru şıkkı soldaki daireyle işaretle. Gönderdikten sonra sorular değiştirilemez; ${esc(partnerName())} bir kez çözebilir.</p>
+    <p class="err"></p><button class="btn">Testi gönder</button></form>`);
+  const f = $('form', m), qs = $('#qs', m);
+  const addQ = () => {
+    if (qs.children.length >= 15) return toast('En fazla 15 soru');
+    const n = qs.children.length;
+    const d = document.createElement('div'); d.className = 'qb card soft';
+    d.innerHTML = `<div class="row-top"><b class="grow">Soru ${n + 1}</b>${n ? `<button type="button" class="icon-btn danger" data-rm aria-label="Sil">${ic('trash')}</button>` : ''}</div>
+      <input name="q" required placeholder="Soru">
+      ${[0, 1, 2, 3].map(i => `<div class="opt-row"><input type="radio" name="a${n}" value="${i}" ${i ? '' : 'checked'} aria-label="Doğru"><input name="o" placeholder="${i + 1}. şık${i > 1 ? ' (isteğe bağlı)' : ''}"></div>`).join('')}`;
+    $('[data-rm]', d)?.addEventListener('click', () => d.remove());
+    qs.append(d);
+  };
+  addQ(); addQ(); addQ();
+  $('#addQ', m).onclick = addQ;
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const err = $('.err', f), questions = [], answers = [];
+    for (const [i, d] of [...qs.children].entries()) {
+      const q = $('[name=q]', d).value.trim(), all = $$('[name=o]', d).map(x => x.value.trim());
+      const pick = +$('input[type=radio]:checked', d).value;
+      if (!q) { err.textContent = `${i + 1}. soru boş`; return; }
+      if (!all[pick]) { err.textContent = `${i + 1}. soruda doğru işaretli şık boş`; return; }
+      const o = all.filter(Boolean); if (o.length < 2) { err.textContent = `${i + 1}. soruda en az 2 şık olmalı`; return; }
+      questions.push({ q, o }); answers.push(o.indexOf(all[pick]));
+    }
+    if (!questions.length) { err.textContent = 'En az bir soru ekle'; return; }
+    try { await api.insert('media_quizzes', { title: f.title.value.trim(), media_id: f.media.value || null, questions, answers }); m.close(); hearts(12); toast('Test gönderildi'); champTab = 'testler'; rerender(); }
+    catch (er) { err.textContent = er.message; }
+  };
+}
+
+function quizSolver(q, titleOf) {
+  if (!q) return;
+  const picks = Array(q.questions.length).fill(null);
+  let i = 0;
+  const m = modal(`<div id="solve"></div>`, 'quiz-modal');
+  const box = $('#solve', m);
+  const draw = () => {
+    const cur = q.questions[i];
+    box.innerHTML = `<p class="muted small">${esc(q.title)}${titleOf(q.media_id) ? ` · ${esc(titleOf(q.media_id))}` : ''}</p>
+      <div class="q-progress"><span style="width:${(i) / q.questions.length * 100}%"></span></div>
+      <p class="muted small">Soru ${i + 1} / ${q.questions.length}</p>
+      <h3 class="serif q-text">${esc(cur.q)}</h3>
+      <div class="q-opts">${cur.o.map((o, k) => `<button data-k="${k}" class="${picks[i] === k ? 'right' : ''}">${esc(o)}</button>`).join('')}</div>
+      <div class="q-nav">${i ? '<button class="link" id="prev">Önceki</button>' : '<span></span>'}
+        ${i < q.questions.length - 1 ? '<button class="btn small" id="next" disabled>Sonraki</button>' : '<button class="btn small" id="send" disabled>Bitir ve gönder</button>'}</div>`;
+    const nx = $('#next', box) || $('#send', box);
+    nx.disabled = picks[i] === null;
+    $$('[data-k]', box).forEach(b => b.onclick = () => { picks[i] = +b.dataset.k; draw(); });
+    $('#prev', box)?.addEventListener('click', () => { i--; draw(); });
+    $('#next', box)?.addEventListener('click', () => { i++; draw(); });
+    $('#send', box)?.addEventListener('click', async () => {
+      try {
+        const r = await api.rpc('media_quiz_submit', { qid: q.id, picks });
+        const pct = r.total ? r.score / r.total : 0;
+        if (pct >= .7) hearts(30);
+        box.innerHTML = `<div class="center"><p class="muted small">${esc(q.title)}</p><p class="big-time">${r.score}/${r.total}</p>
+          <p class="quote">${pct === 1 ? 'Kusursuz! Her ayrıntıyı hatırlıyorsun' : pct >= .7 ? 'Harika, gerçekten dikkatle izlemişsin' : pct >= .4 ? 'Fena değil, bir dahakine daha iyi' : 'Bu sefer olmadı, ama bir film daha izlemek için güzel bir bahane'}</p></div>
+          ${q.questions.map((qq, k) => `<div class="card q-done ${picks[k] === r.answers[k] ? 'ok' : 'no'}"><b>${esc(qq.q)}</b><p class="small">Senin cevabın: ${esc(qq.o[picks[k]] ?? '—')}${picks[k] === r.answers[k] ? '' : ` · Doğrusu: <b>${esc(qq.o[r.answers[k]])}</b>`}</p></div>`).join('')}
+          <button class="btn" id="ok">Tamam</button>`;
+        $('#ok', box).onclick = () => { m.close(); rerender(); };
+      } catch (er) { toast(er.message); }
+    });
+  };
+  draw();
+}
+function quizReview(q) {
+  if (!q) return;
+  modal(`<h2>${esc(q.title)}</h2><p class="big-time center">${q.score}/${q.total}</p>
+    ${q.questions.map((qq, k) => `<div class="card q-done ${q.picks?.[k] === q.answers?.[k] ? 'ok' : 'no'}"><b>${esc(qq.q)}</b><p class="small">Senin cevabın: ${esc(qq.o[q.picks?.[k]] ?? '—')}${q.picks?.[k] === q.answers?.[k] ? '' : ` · Doğrusu: <b>${esc(qq.o[q.answers?.[k]] ?? '')}</b>`}</p></div>`).join('')}`);
+}
+
+// ================================================================== canlı bahçe
+let gardenTab = 'canli', gardenWho = 'hepsi';
+async function gardenLive(v) {
+  if (gardenTab === 'takvim') {
+    await gardenCalendar(v);
+    const head0 = $('.page-head', v); head0?.insertAdjacentHTML('afterend', gardenSeg());
+    bindGardenSeg(v); return;
+  }
+  const rows = cache('flowers', await api.list('flowers', 500));
+  const mine = rows.filter(isMine), his = rows.filter(f => !isMine(f));
+  const list = gardenWho === 'ben' ? mine : gardenWho === 'o' ? his : rows;
+  const t = todayISO(), sentToday = rows.some(f => isMine(f) && f.day === t);
+  v.innerHTML = `${back()}${head('Bahçemiz', sentToday ? '' : addBtn('send', 'Çiçek'), 'Her gönderdiğiniz çiçek burada büyür')}
+    ${gardenSeg()}
+    <div class="garden-stage"><canvas id="gcv"></canvas>
+      <div class="garden-chips">${[['hepsi', 'Tümü'], ['ben', 'Benimkiler'], ['o', esc(partnerName()) + '’nınkiler']].map(([k, l]) => `<button data-who="${k}" class="${gardenWho === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    </div>
+    <div class="stats card"><div><b>${rows.length}</b><span>çiçek</span></div><div><b>${mine.length}</b><span>senden</span></div><div><b>${his.length}</b><span>${esc(partnerName())}’dan</span></div></div>
+    <div class="card grow-legend"><b>Bahçe nasıl büyür?</b><p class="small muted">Her çiçek önce tohum olarak düşer. Ondan sonra gönderilen her çiçek onu bir adım büyütür: <b>tohum → filiz → tomurcuk → çiçek</b>. Birbirinize çiçek gönderdikçe bahçeniz açar. Bir çiçeğe dokununca kimden geldiğini görürsün.</p></div>`;
+  bindGardenSeg(v);
+  $('#send')?.addEventListener('click', flowerPicker);
+  $$('[data-who]', v).forEach(b => b.onclick = () => { gardenWho = b.dataset.who; rerender(); });
+  const scene = new GardenScene($('#gcv'), {
+    flowers: list, imgs: flowerImages(flower, FLOWERS.map(f => f[0])), reduce: reduceMotion(),
+    onTap: (f, stage) => {
+      const meta = FLOWERS.find(x => x[0] === f.kind);
+      modal(`<div class="center">${flower(f.kind, 'big-flower')}<h2>${esc(meta?.[1] ?? '')}</h2>
+        <p class="muted">${esc(meta?.[2] ?? '')} · ${esc(nameOf(f.author))} · ${fmtDate(f.day)}</p>
+        <p class="stage-pill">${['Tohum', 'Filiz', 'Tomurcuk', 'Açtı'][stage]}</p>
+        ${f.note ? `<p class="lb-cap">“${esc(f.note)}”</p>` : ''}${stage < 3 ? `<p class="small muted">${3 - stage} çiçek daha gönderildikçe açacak</p>` : ''}</div>`);
+    },
+  });
+  pageCleanup = () => scene.destroy();
+}
+const gardenSeg = () => `<div class="seg"><button data-gt="canli" class="${gardenTab === 'canli' ? 'on' : ''}">Bahçe</button><button data-gt="takvim" class="${gardenTab === 'takvim' ? 'on' : ''}">Gün gün</button></div>`;
+const bindGardenSeg = v => $$('[data-gt]', v).forEach(b => b.onclick = () => { gardenTab = b.dataset.gt; rerender(); });
+
+// ================================================================== yaşayan dünya
+async function worldPage(v) {
+  const [flowers, mems, drawings, stars, days] = await Promise.all([
+    api.list('flowers', 500), api.list('memories', 60), api.list('drawings', 5).catch(() => []), api.list('star_maps').catch(() => []), api.list('special_days').catch(() => []),
+  ]);
+  const withPhoto = mems.filter(m => m.photos?.[0]).slice(0, 4);
+  const latestDrawing = drawings.find(d => d.image_path);
+  await loadUrls([...withPhoto.map(m => m.photos[0]), latestDrawing?.image_path].filter(Boolean));
+  const t = todayISO();
+  const special = !!isMilestoneToday() || autoPack() === 'yildonumu' || days.some(d => (d.yearly ? d.day.slice(5) === t.slice(5) : d.day === t));
+  const m0 = new Date().getMonth(), season = m0 === 11 || m0 <= 1 ? 'winter' : m0 <= 4 ? 'spring' : m0 <= 7 ? 'summer' : 'autumn';
+  v.innerHTML = `<div class="world">
+    <div class="world-host" id="wh"><div class="world-load"><span class="heart beat">❤</span><p>Dünyamız hazırlanıyor…</p></div></div>
+    <div class="world-top">${back()}<div><p class="world-kicker">${brand(state.s.title)}</p><h1>Dünyamız</h1></div></div>
+    <p class="world-hint">Sürükle, döndür · iki parmakla yakınlaştır · bir şeye dokun</p>
+  </div>
+  <div class="world-list card"><b>Dünyada neler var?</b><div class="world-spots" id="spots"></div>
+    <p class="muted small">Çiçek tarhı gönderdiğiniz çiçeklerle dolar, çitte anı fotoğraflarınız asılı, şövalede son çiziminiz durur; gece fenerler yanar, yıldız haritalarınız gökte parlar. Özel günlerde ev ışıklarla süslenir.</p></div>`;
+  const host = $('#wh');
+  try {
+    const w = await createWorld(host, {
+      flowers, memories: withPhoto.map(m => ({ id: m.id, title: m.title, date: m.happened_on, url: state.urls[m.photos[0]] })),
+      drawingUrl: latestDrawing ? state.urls[latestDrawing.image_path] : null, starMaps: stars.length, special, season,
+    }, {
+      reduce: reduceMotion(),
+      onGo: h => { location.hash = h; },
+      onPhoto: m => { const mem = withPhoto.find(x => x.id === m.id); if (mem) lightbox(mem.photos[0], mem.title, fmtDate(mem.happened_on)); },
+      onReady: () => $('.world-load', host)?.remove(),
+    });
+    $('#spots').innerHTML = w.hotspots.map(([h, l]) => `<a class="chip" href="${h}">${esc(l)}</a>`).join('');
+    pageCleanup = () => w.destroy();
+  } catch (er) {
+    host.innerHTML = `<div class="world-load"><p>Bu cihazda 3D dünya açılamadı.</p><p class="muted small">${esc(er.message)}</p></div>`;
+    $('#spots').innerHTML = [['#/anilar', 'Anılarımız'], ['#/bahce', 'Bahçemiz'], ['#/cizim', 'Çizimlerimiz'], ['#/yildizlar', 'Yıldız haritalarımız']].map(([h, l]) => `<a class="chip" href="${h}">${l}</a>`).join('');
+  }
+}
+
 // ================================================================== anılar
 async function memories(v) {
   const rows = cache('memories', await api.list('memories'));
@@ -1995,18 +2451,24 @@ async function prayers(v) {
 async function more(v) {
   const groups = [
     ['Her gün', [['gunun-sorusu', 'quiz', 'Günün sorusu', 'Cevaplar ikiniz de cevaplayınca açılır'], ['zor-gun', 'heart', 'Bugün biraz zor', 'Kötü gün modu · destek kartları'], ['fisilti', 'chat', 'Fısıltı', 'Sadece ikimizin sohbeti'], ['bahce', 'flower', 'Bahçemiz', 'Her gün bir çiçek'], ['selamlar', 'sun', 'Günaydın & iyi geceler', 'Saatine göre görünen notlar'], ['ruh-hali', 'smile', 'Ruh halimiz', 'Bugün nasılız']]],
-    ['Oyunlar', [['bumuo', 'split', 'Bu mu, o mu?', 'Ne kadar uyumluyuz'], ['hafiza', 'cards', 'Hafıza oyunu', 'Fotoğraflarımızla, rekor kır'], ['test', 'quiz', 'Beni ne kadar tanıyorsun?', 'Birbirinize sorular']]],
+    ['Yaratıcı', [['yildizlar', 'star', 'Yıldız haritamız', 'O anın gerçek gökyüzü'], ['cizim', 'brush', 'Çizim defterimiz', 'Birlikte, canlı çizim']]],
+    ['Oyunlar', [['sampiyona', 'crown', 'Film & kitap şampiyonası', 'Testler, puanlar, taç'], ['bumuo', 'split', 'Bu mu, o mu?', 'Ne kadar uyumluyuz'], ['hafiza', 'cards', 'Hafıza oyunu', 'Fotoğraflarımızla, rekor kır'], ['test', 'quiz', 'Beni ne kadar tanıyorsun?', 'Birbirinize sorular']]],
     ['Sürprizler', [['surprizler', 'gift', 'Açılış sürprizi', 'Siteyi açınca karşısına çıkar'], ['kuponlar', 'ticket', 'Aşk kuponları', 'Kendi yazdığınız kuponlar']]],
     ['Birlikte', [['ozet', 'sparkle', 'Aylık özetimiz', 'Her ayın hikâyesi'], ['muzik', 'music', 'Müziğimiz', 'Ortak playlist ve şarkılarımız'], ['ozel-gunler', 'calendar', 'Özel günler', 'Geri sayımlar'], ['ilkler', 'flag', 'İlklerimiz', 'Unutulmayacak ilkler'], ['yapacaklar', 'check', 'Yapacaklarımız', 'Hayal listemiz'], ['harita', 'pin', 'Haritamız', 'Gittiğimiz yerler'], ['kavanoz', 'jar', 'Sebep kavanozu', 'Seni neden seviyorum']]],
     ...(state.admin ? [['Yönetim', [['admin', 'shield', 'Admin paneli', 'Ayarlar ve tüm içerik']]]] : []),
   ];
   v.innerHTML = `${head('Daha fazlası')}
+    <a class="world-entry" href="#/dunya">
+      <span class="we-sky"></span><span class="we-island"></span>
+      <span class="we-text"><small>Yaşayan dünyamız</small><b>Dünyamız</b><span>Anılarımızdan büyüyen küçük adamız</span></span>
+      ${ic('chevron', 'chev')}
+    </a>
     ${groups.map(([g, items]) => `<h3 class="group">${g}</h3><div class="list card">${items.map(([h, i, t, s]) => `
       <a class="list-row" href="#/${h}"><span class="list-ic">${ic(i)}</span><span class="grow"><b>${t}</b><span class="muted small">${s}</span></span>${ic('chevron', 'chev')}</a>`).join('')}</div>`).join('')}`;
 }
 
-// ---------------------------------------------------------------- bahçe
-async function garden(v) {
+// ---------------------------------------------------------------- bahçe (takvim görünümü)
+async function gardenCalendar(v) {
   const rows = cache('flowers', await api.list('flowers'));
   const t = todayISO();
   const startDay = localISO(START_D).slice(0, 10);
@@ -2331,12 +2793,14 @@ async function jar(v) {
 
 // ================================================================== admin paneli
 const ADMIN_TABLES = ['memories', 'letters', 'photos', 'reasons', 'prayers', 'prayer_logs', 'moods', 'firsts', 'todos', 'songs', 'places',
-  'surprises', 'greetings', 'thoughts', 'flowers', 'coupons', 'special_days', 'messages', 'tot_questions', 'memory_scores'];
+  'surprises', 'greetings', 'thoughts', 'flowers', 'coupons', 'special_days', 'messages', 'tot_questions', 'memory_scores',
+  'star_maps', 'drawings', 'shared_media'];
 const ADMIN_LABEL = {
   memories: 'Anılar', letters: 'Mektuplarım', photos: 'Fotoğraflar', reasons: 'Sebepler', prayers: 'Dualar', prayer_logs: 'Dua kayıtları',
   moods: 'Ruh halleri', firsts: 'İlkler', todos: 'Yapacaklar', songs: 'Şarkılar', places: 'Yerler', surprises: 'Sürprizlerim',
   greetings: 'Selamlar', thoughts: 'Düşünceler', flowers: 'Çiçekler', coupons: 'Kuponlar', special_days: 'Özel günler',
   messages: 'Mesajlar', tot_questions: 'Bu mu o mu soruları', memory_scores: 'Hafıza skorları',
+  star_maps: 'Yıldız haritaları', drawings: 'Çizimler', shared_media: 'Film & kitaplar',
 };
 async function admin(v, [table]) {
   if (table && SCHEMA[table]) return adminTable(v, table);

@@ -12,13 +12,13 @@
 .pin-dots span.on { background: var(--rose); transform: scale(1.1); }
 .pin-dots.shake { animation: pinShake .4s; }
 @keyframes pinShake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
-.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px; }
-.pad button { width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; font-size: 1.7rem; font-weight: 500; color: var(--ink);
+.lock .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 22px; }
+.lock .pad button { width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; font-size: 1.7rem; font-weight: 500; color: var(--ink);
   background: rgba(255, 255, 255, .55); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: transform .1s, background .1s; }
-[data-theme="dark"] .pad button { background: rgba(255, 255, 255, .06); }
-.pad button:active { transform: scale(.92); background: var(--blush); }
-.pad .pad-link { background: none !important; border: 0; font-size: .9rem; font-weight: 600; color: var(--muted); display: grid; place-items: center; }
-.pad .pad-link:empty { visibility: hidden; }
+[data-theme="dark"] .lock .pad button { background: rgba(255, 255, 255, .06); }
+.lock .pad button:active { transform: scale(.92); background: var(--blush); }
+.lock .pad .pad-link { background: none !important; border: 0; font-size: .9rem; font-weight: 600; color: var(--muted); display: grid; place-items: center; }
+.lock .pad .pad-link:empty { visibility: hidden; }
 
 /* ---------- aylık özet listesi ---------- */
 .wrap-ready { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; color: #fff; border: 0;

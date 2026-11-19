@@ -1,0 +1,3 @@
+Yıldız ve takımyıldız verisi: d3-celestial (Olaf Frohn), BSD 3-Clause lisansı.
+https://github.com/ofrohn/d3-celestial
+Kaynak katalog: Hipparcos; takımyıldız çizgileri ve adları d3-celestial veri setinden sıkıştırılmıştır.

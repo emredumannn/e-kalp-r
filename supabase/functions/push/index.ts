@@ -72,6 +72,7 @@ const CATEGORY: Record<string, string> = {
   todos: 'shares', songs: 'shares', places: 'shares', special_days: 'shares',
   messages: 'messages', memory_scores: 'fun', letters_open: 'letters',
   daily_answers: 'daily', support_pings: 'support',
+  star_maps: 'shares', drawings: 'shares', shared_media: 'fun', media_quizzes: 'fun', media_quiz_attempts: 'fun',
 };
 // Aynı türden bildirimler arasında en az bu kadar saniye
 const THROTTLE: Record<string, number> = { photos: 120, thoughts: 3 * 3600, moods: 1800, prayer_logs: 300, messages: 8, memory_scores: 600, support_pings: 600 };
@@ -105,6 +106,11 @@ function message(kind: string, r: Record<string, any>, name: (id: string) => str
     case 'messages': return { title: who, body: r.body ? short(r.body, 140) : r.photo ? 'Bir fotoğraf gönderdi' : 'Sesli mesaj gönderdi', url: '#/fisilti' };
     case 'memory_scores': return { title: `${who} hafıza oyununu ${mmss(r.seconds)}’de bitirdi`, body: 'Rekoru kırabilir misin?', url: '#/hafiza' };
     // Cevabın kendisi asla bildirimde görünmez
+    case 'star_maps': return { title: `${who} bir yıldız haritası oluşturdu`, body: short(r.title), url: '#/yildizlar' };
+    case 'drawings': return { title: `${who} yeni bir çizim başlattı`, body: 'Gel, birlikte çizelim', url: '#/cizim' };
+    case 'shared_media': return { title: `${who} listemize ${r.kind === 'kitap' ? 'bir kitap' : r.kind === 'dizi' ? 'bir dizi' : 'bir film'} ekledi`, body: short(r.title), url: '#/sampiyona' };
+    case 'media_quizzes': return { title: `${who} sana bir test hazırladı`, body: short(r.title), url: '#/sampiyona' };
+    case 'media_quiz_attempts': return { title: `${who} testini çözdü`, body: `${r.score}/${r.total} doğru`, url: '#/sampiyona' };
     case 'daily_answers': return { title: `${who} günün sorusunu cevapladı`, body: 'Sen de cevapla; ikiniz de cevaplayınca cevaplar açılır', url: '#/' };
     // Hassas ayrıntı yok: ruh hali bildirimde yazılmaz
     case 'support_pings': return { title: `${who} bugün biraz zor bir gün geçiriyor`, body: 'Ona bir fısıltı gönder ya da ara', url: '#/fisilti' };
@@ -130,6 +136,12 @@ Deno.serve(async req => {
   const to = msg.to ?? people?.find(p => p.id !== actor)?.id;
   if (!to || (table !== 'test' && to === actor)) return json({ skipped: 'no recipient' });
 
+  // Test çözüldü: bildirim testi yazana gider
+  if (table === 'media_quiz_attempts') {
+    const { data: q } = await db.from('media_quizzes').select('author, title').eq('id', record.quiz_id).maybeSingle();
+    if (!q || q.author === actor) return json({ skipped: 'no quiz owner' });
+    msg.body = `“${short(q.title, 60)}” · ${record.score}/${record.total} doğru`;
+  }
   // Günün sorusu: karşı taraf zaten cevapladıysa "cevaplarınız açıldı" de
   if (table === 'daily_answers') {
     const { count } = await db.from('daily_answers').select('id', { count: 'exact', head: true }).eq('author', to).eq('day', record.day);
