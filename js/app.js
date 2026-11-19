@@ -532,7 +532,7 @@ async function showSurprises() {
 }
 
 // ================================================================== iskelet
-const TABS = [['', 'home', 'Biz'], ['anilar', 'book', 'Anılar'], ['mektuplar', 'mail', 'Mektup'], ['galeri', 'image', 'Galeri'], ['dualar', 'moon', 'Dualar'], ['daha', 'grid', 'Daha']];
+const TABS = [['', 'home', 'Biz'], ['mektuplar', 'mail', 'Mektup'], ['dunya', 'island', 'Dünyamız'], ['galeri', 'image', 'Galeri'], ['dualar', 'moon', 'Dualar'], ['daha', 'grid', 'Daha']];
 function shell() {
   document.body.className = '';
   document.title = state.s.title;
@@ -555,7 +555,7 @@ function shell() {
 }
 
 const MORE = ['ruh-hali', 'ilkler', 'yapacaklar', 'sarkilar', 'muzik', 'harita', 'kavanoz', 'admin', 'bahce', 'kuponlar', 'test',
-  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet', 'gunun-sorusu', 'zor-gun', 'yildizlar', 'cizim', 'sampiyona', 'dunya'];
+  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet', 'gunun-sorusu', 'zor-gun', 'yildizlar', 'cizim', 'sampiyona', 'anilar'];
 const ROUTES = {
   '': home, anilar: memories, mektuplar: letters, galeri: gallery, dualar: prayers, daha: more,
   'ruh-hali': moods, ilkler: firsts, yapacaklar: todos, sarkilar: songs, muzik: songs, harita: map, kavanoz: jar, admin,
@@ -2223,7 +2223,7 @@ async function worldPage(v) {
   const m0 = new Date().getMonth(), season = m0 === 11 || m0 <= 1 ? 'winter' : m0 <= 4 ? 'spring' : m0 <= 7 ? 'summer' : 'autumn';
   v.innerHTML = `<div class="world">
     <div class="world-host" id="wh"><div class="world-load"><span class="heart beat">❤</span><p>Dünyamız hazırlanıyor…</p></div></div>
-    <div class="world-top">${back()}<div><p class="world-kicker">${brand(state.s.title)}</p><h1>Dünyamız</h1></div></div>
+    <div class="world-top"><div><p class="world-kicker">${brand(state.s.title)}</p><h1>Dünyamız</h1></div></div>
     <p class="world-hint">Sürükle, döndür · iki parmakla yakınlaştır · bir şeye dokun</p>
   </div>
   <div class="world-list card"><b>Dünyada neler var?</b><div class="world-spots" id="spots"></div>
@@ -2450,6 +2450,7 @@ async function prayers(v) {
 // ================================================================== daha
 async function more(v) {
   const groups = [
+    ['Anılarımız', [['anilar', 'book', 'Anılarımız', 'Birlikte yazdığımız anı defteri']]],
     ['Her gün', [['gunun-sorusu', 'quiz', 'Günün sorusu', 'Cevaplar ikiniz de cevaplayınca açılır'], ['zor-gun', 'heart', 'Bugün biraz zor', 'Kötü gün modu · destek kartları'], ['fisilti', 'chat', 'Fısıltı', 'Sadece ikimizin sohbeti'], ['bahce', 'flower', 'Bahçemiz', 'Her gün bir çiçek'], ['selamlar', 'sun', 'Günaydın & iyi geceler', 'Saatine göre görünen notlar'], ['ruh-hali', 'smile', 'Ruh halimiz', 'Bugün nasılız']]],
     ['Yaratıcı', [['yildizlar', 'star', 'Yıldız haritamız', 'O anın gerçek gökyüzü'], ['cizim', 'brush', 'Çizim defterimiz', 'Birlikte, canlı çizim']]],
     ['Oyunlar', [['sampiyona', 'crown', 'Film & kitap şampiyonası', 'Testler, puanlar, taç'], ['bumuo', 'split', 'Bu mu, o mu?', 'Ne kadar uyumluyuz'], ['hafiza', 'cards', 'Hafıza oyunu', 'Fotoğraflarımızla, rekor kır'], ['test', 'quiz', 'Beni ne kadar tanıyorsun?', 'Birbirinize sorular']]],
