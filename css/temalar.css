@@ -1,0 +1,153 @@
+/* =====================================================================
+   Tema paketleri — <html data-pack="…">
+   Her paket yalnızca renk değişkenlerini değiştirir. Açık modda tam palet,
+   koyu modda yalnızca vurgu renkleri değişir (Gece Bahçesi kendisi koyu temadır).
+   ===================================================================== */
+
+/* ---------- İlkbahar: açık pembe, krem, yumuşak yeşil ---------- */
+:root[data-pack="ilkbahar"]:not([data-theme="dark"]) {
+  --bg: #fbf8f1; --blush: #fbe8ea; --blush-2: #fdf3f2; --card: #fffdf9;
+  --pink: #efb3bf; --pink-d: #dd8fa1; --rose: #c0687f; --rose-d: #9b4b60;
+  --line: #f1e5e0; --muted: #94877f; --gold: #9cc79c;
+}
+[data-pack="ilkbahar"]:not([data-theme="dark"]) body {
+  background: radial-gradient(1100px 480px at 0% -10%, #fbe3e6 0, transparent 60%),
+              radial-gradient(800px 460px at 110% 15%, #e6f2df 0, transparent 55%), var(--bg);
+}
+[data-theme="dark"][data-pack="ilkbahar"] { --rose: #ec9db2; --rose-d: #f6c4d1; --pink-d: #9cc79c; }
+
+/* ---------- Yıldönümü: şampanya, gül kurusu, ince altın ---------- */
+:root[data-pack="yildonumu"]:not([data-theme="dark"]) {
+  --bg: #fbf6ef; --blush: #f4e7dc; --blush-2: #faf2ea; --card: #fffcf8;
+  --pink: #dcb59a; --pink-d: #c99b7f; --rose: #a8707e; --rose-d: #84505e;
+  --line: #efe2d5; --muted: #988577; --gold: #c4a06a; --ink: #463438;
+}
+[data-pack="yildonumu"]:not([data-theme="dark"]) body {
+  background: radial-gradient(1100px 480px at 0% -10%, #f6e6d3 0, transparent 60%),
+              radial-gradient(800px 460px at 110% 20%, #f3e2e2 0, transparent 55%), var(--bg);
+}
+[data-theme="dark"][data-pack="yildonumu"] { --rose: #e2b48e; --rose-d: #f3d6b7; --pink-d: #d9a983; --gold: #e2c08c; }
+[data-pack="yildonumu"] .card { border-color: color-mix(in srgb, var(--gold) 35%, transparent); }
+
+/* ---------- Kış Masalı: kırık beyaz, soğuk pastel mavi ---------- */
+:root[data-pack="kis"]:not([data-theme="dark"]) {
+  --bg: #f5f8fc; --blush: #e5edf7; --blush-2: #eef3fa; --card: #ffffff;
+  --pink: #b8cbe6; --pink-d: #8eaad3; --rose: #6c8cc0; --rose-d: #4b6a9c;
+  --line: #e0e8f2; --muted: #8292a6; --ink: #36404e; --gold: #b7c7dc;
+}
+[data-pack="kis"]:not([data-theme="dark"]) body {
+  background: radial-gradient(1100px 480px at 0% -10%, #e3edf9 0, transparent 60%),
+              radial-gradient(800px 460px at 110% 20%, #f1ecf6 0, transparent 55%), var(--bg);
+}
+[data-theme="dark"][data-pack="kis"] { --rose: #a9c3ef; --rose-d: #d3e1f7; --pink: #7f97c4; --pink-d: #a7bde6; }
+
+/* ---------- Minimal: nötr krem ve gri, çok az pembe ---------- */
+:root[data-pack="minimal"]:not([data-theme="dark"]) {
+  --bg: #f7f5f2; --blush: #eeeae5; --blush-2: #f5f2ee; --card: #ffffff;
+  --pink: #d8c8c3; --pink-d: #c2a7a5; --rose: #8f7276; --rose-d: #6a5357;
+  --line: #e8e3dd; --muted: #8f8884; --ink: #3a3536; --gold: #b9aa98;
+}
+[data-pack="minimal"]:not([data-theme="dark"]) body { background: var(--bg); }
+[data-theme="dark"][data-pack="minimal"] { --rose: #c9b3b6; --rose-d: #e6d8da; --pink-d: #b8a3a6; }
+
+/* ---------- Gece Bahçesi: lacivert ve mor, küçük yıldızlar (her zaman koyu) ---------- */
+:root[data-theme="dark"][data-pack="gece"] {
+  --bg: #0e0f1f; --blush: #1d1c39; --blush-2: #16162c; --card: #15152a; --surface: #1c1b35;
+  --pink: #8a84d6; --pink-d: #a69ef0; --rose: #b5a6ff; --rose-d: #d8ccff;
+  --ink: #ecebff; --muted: #9a97c2; --line: #29284d; --paper: #1a1930; --gold: #e6cf8f;
+}
+[data-pack="gece"] body {
+  background:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 72% 9%, rgba(255,255,255,.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 86% 42%, rgba(255,255,255,.6) 50%, transparent 51%),
+    radial-gradient(1px 1px at 33% 64%, rgba(255,255,255,.5) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 58% 82%, rgba(255,255,255,.55) 50%, transparent 51%),
+    radial-gradient(1px 1px at 92% 90%, rgba(255,255,255,.5) 50%, transparent 51%),
+    radial-gradient(1000px 500px at 0% -10%, #241f4d 0, transparent 60%),
+    radial-gradient(800px 500px at 110% 30%, #2a1d46 0, transparent 55%), var(--bg);
+  background-attachment: fixed;
+}
+[data-pack="gece"] .top, [data-pack="gece"] .chat-head, [data-pack="gece"] .composer-wrap { background: rgba(14, 15, 31, .85); }
+[data-pack="gece"] .tabs { background: rgba(18, 18, 36, .92); }
+
+/* ---------- Paketlerde sabit pembeleri vurgu rengine bağla ---------- */
+:root[data-pack]:not([data-pack="pembe"]) .btn:not(.ghost):not(.light) { background: linear-gradient(135deg, var(--pink-d), var(--rose)); }
+:root[data-pack]:not([data-pack="pembe"]) .send,
+:root[data-pack]:not([data-pack="pembe"]) .msg.me .bubble { background: linear-gradient(140deg, var(--pink-d), var(--rose)); }
+:root[data-pack]:not([data-pack="pembe"]) .think-btn { background: radial-gradient(circle at 35% 30%, var(--pink), var(--rose) 80%); }
+:root[data-pack]:not([data-pack="pembe"]):not([data-theme="dark"]) .counter,
+:root[data-pack]:not([data-pack="pembe"]):not([data-theme="dark"]) .news { background: linear-gradient(170deg, var(--card) 0%, var(--blush-2) 100%); }
+:root[data-pack]:not([data-pack="pembe"]) .heart { color: var(--pink-d); }
+
+/* ---------- Kış Masalı: kar katmanı ---------- */
+canvas.snow { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
+
+/* ---------- Hareketi azalt ---------- */
+:root[data-motion="reduce"] *, :root[data-motion="reduce"] *::before, :root[data-motion="reduce"] *::after {
+  animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important; scroll-behavior: auto !important;
+}
+
+/* ---------- Ayarlar: tema seçici ---------- */
+.label-sm { font-size: .78rem; font-weight: 700; color: var(--muted); margin: 0 0 6px; letter-spacing: .02em; }
+.pack-pick { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.pack-pick button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--card); font-weight: 600; font-size: .84rem; color: var(--ink); text-align: left; }
+.pack-pick button.on { border-color: var(--rose); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose) 18%, transparent); }
+.pack-pick .sw { width: 22px; height: 22px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+
+/* =====================================================================
+   Günün sorusu
+   ===================================================================== */
+.daily-q { font-family: var(--serif); font-size: 1.45rem; font-weight: 600; color: var(--rose-d); line-height: 1.25; margin: 0 0 12px; }
+.daily-q.sm { font-size: 1.15rem; margin-bottom: 8px; }
+.daily form textarea { margin-bottom: 8px; }
+.daily-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.daily-a { border-radius: 16px; padding: 10px 14px; margin-bottom: 8px; background: var(--blush-2); border: 1px solid var(--line); }
+.daily-a b { font-size: .74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--rose); }
+.daily-a p { margin: 2px 0 0; white-space: pre-wrap; }
+.daily-a.them { background: var(--card); }
+.daily-wait { display: flex; align-items: center; gap: 8px; margin: 4px 0 10px; font-size: .88rem; color: var(--muted); }
+.daily-wait .ic { width: 16px; height: 16px; color: var(--rose); }
+.daily-wait.on { color: var(--ink); }
+.daily-old .date { margin: 0 0 2px; font-size: .72rem; color: var(--rose); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+
+/* =====================================================================
+   Kötü gün modu — sakin, yavaş, sade
+   ===================================================================== */
+.hard-day { display: flex; align-items: center; gap: 14px; }
+.hard-day .list-ic { background: color-mix(in srgb, #9c8fd6 18%, var(--card)); color: #8475c9; }
+.note-strong .ic { color: #8475c9 !important; }
+.comfort { --calm: #8475c9; }
+.cf-head { text-align: center; margin: 4px 0 16px; }
+.cf-head h1 { font-size: 2rem; }
+.cf-head p { margin: 4px 0 0; }
+.cf-kicker { font-family: var(--script); font-size: 1.8rem; color: var(--calm); margin: 0; line-height: 1; }
+.cf-moods { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 4px 0 18px; }
+.cf-moods button { padding: 9px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-weight: 600; font-size: .86rem; color: var(--ink); transition: background .3s, border-color .3s; }
+.cf-moods button.on { background: color-mix(in srgb, var(--calm) 16%, var(--card)); border-color: var(--calm); color: var(--calm); }
+.cf-sub { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; color: var(--muted); margin: 18px 6px 8px; }
+.cf-card { display: block; width: 100%; text-align: left; }
+.cf-card.note .quote { display: block; font-size: 1.3rem; line-height: 1.45; color: var(--ink); }
+.cf-card .quote.sm { font-size: 1.05rem; margin: 10px 0 0; display: block; }
+.cf-card .by { display: block; margin-top: 8px; font-size: .78rem; color: var(--muted); }
+.cf-card.photo { padding: 8px; }
+.cf-card.photo img, .cf-photo img { width: 100%; border-radius: 14px; display: block; max-height: 420px; object-fit: cover; }
+.cf-photo { display: block; width: 100%; }
+.cf-link { display: flex; align-items: center; gap: 12px; }
+.cf-call .btn { margin-bottom: 6px; }
+.cf-audio { color: var(--calm); }
+.cf-audio .play { background: color-mix(in srgb, var(--calm) 14%, var(--card)) !important; color: var(--calm) !important; }
+.cf-audio .bar { background: var(--line) !important; }
+.cf-empty { text-align: center; color: var(--muted); }
+.cf-empty p { margin: 0; }
+.cf-tell { margin-top: 18px; text-align: center; }
+.cf-tell .btn { margin-top: 10px; background: linear-gradient(135deg, #a99be0, var(--calm)) !important; }
+.cf-mine { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.comfort > .btn { margin-bottom: 14px; }
+.cf-kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 2px 0 14px; }
+.cf-kinds button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 14px; border: 1.5px solid var(--line); background: var(--card); font-size: .8rem; font-weight: 600; color: var(--ink); }
+.cf-kinds button .ic { color: var(--rose); }
+.cf-kinds button.on { border-color: var(--rose); background: var(--blush-2); }
+.cf-rec { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+#recPrev { width: 100%; margin-bottom: 12px; }

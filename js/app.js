@@ -3,6 +3,7 @@ import { START, TOGETHER, VAPID_PUBLIC_KEY } from './config.js';
 import { CATEGORIES } from './dualar.js';
 import { ic, flower, FLOWERS, nazar } from './icons.js';
 import { TOT } from './oyunlar.js';
+import { QUESTIONS } from './sorular.js';
 
 // ================================================================== yardımcılar
 const $ = (s, el = document) => el.querySelector(s);
@@ -59,6 +60,7 @@ function toast(msg) {
 
 const HEART_FILL = ['#f4a7bf', '#e07a9c', '#f7c6d4', '#c95a80', '#fbd9e3'];
 function hearts(n = 26) {
+  if (document.documentElement.getAttribute('data-motion') === 'reduce') return;
   for (let i = 0; i < n; i++) {
     const h = document.createElement('span');
     h.className = 'fall';
@@ -97,8 +99,8 @@ async function removeUnused(paths) {
   paths = paths.filter(Boolean);
   if (!paths.length) return;
   try {
-    const [msgs, phs, mems] = await Promise.all([api.list('messages', 1000), api.list('photos', 1000), api.list('memories', 1000)]);
-    const used = new Set([...msgs.flatMap(m => [m.photo, m.audio]), ...phs.map(p => p.path), ...mems.flatMap(m => m.photos ?? [])]);
+    const [msgs, phs, mems, cf] = await Promise.all([api.list('messages', 1000), api.list('photos', 1000), api.list('memories', 1000), api.list('comfort_items', 1000).catch(() => [])]);
+    const used = new Set([...msgs.flatMap(m => [m.photo, m.audio]), ...phs.map(p => p.path), ...mems.flatMap(m => m.photos ?? []), ...cf.map(c => c.media)]);
     const free = paths.filter(p => !used.has(p));
     if (free.length) await api.removeFiles(free);
   } catch {}
@@ -219,6 +221,7 @@ const SCHEMA = {
     { k: 'a', l: 'Birinci seçenek', req: 1, ph: 'Deniz', half: 1 },
     { k: 'b', l: 'İkinci seçenek', req: 1, ph: 'Dağ', half: 1 },
   ] },
+  comfort_items: { one: 'Destek kartı', icon: 'heart', label: r => `${r.kind} · ${r.body ?? ''}`, fields: [], custom: () => toast('Kartı silip yeniden hazırlayabilirsin') },
   memory_scores: { one: 'Skor', icon: 'cards', label: r => `${mmss(r.seconds)} · ${r.moves} hamle · ${r.pairs} çift`, fields: [] },
   special_days: { one: 'Özel gün', icon: 'calendar', label: r => r.title, fields: [
     { k: 'title', l: 'Ne günü?', req: 1, ph: 'Rabia’nın doğum günü' },
@@ -345,6 +348,7 @@ document.addEventListener('click', async e => {
       if (t === 'memories') await removeUnused(r.photos ?? []);
       if (t === 'photos') await removeUnused([r.path]);
       if (t === 'messages') await removeUnused([r.photo, r.audio]);
+      if (t === 'comfort_items') await removeUnused([r.media]);
       closeModals(); toast('Silindi'); rerender();
     } catch (er) { toast(er.message); }
   }
@@ -451,6 +455,14 @@ async function enter(user) {
   state.admin = !!me.is_admin;
   state.people = Object.fromEntries(profs.map(p => [p.id, p]));
   state.partner = profs.find(p => p.id !== user.id) ?? null;
+  // Görünüm tercihleri hesaba bağlı: hesapta yoksa bu cihazdakini hesaba taşı
+  const acct = state.people[user.id].prefs ?? {};
+  if (!Object.keys(acct).length && Object.keys(localPrefs()).length) {
+    state.people[user.id].prefs = { ...localPrefs() };
+    api.rpc('set_my_prefs', { prefs: state.people[user.id].prefs }).catch(() => {});
+  }
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(myPrefs())); } catch {}
+  applyTheme();
   try { const prev = await api.rpc('touch_seen'); state.since = prev ? new Date(prev) : null; } catch {}
   try { navigator.clearAppBadge?.(); } catch {}
   shell();
@@ -517,15 +529,16 @@ function shell() {
   $('#settings').onclick = settings;
   $('#bell').onclick = openBell;
   tick();
+  applyTheme();   // kar katmanı vb. yeniden kurulsun
 }
 
 const MORE = ['ruh-hali', 'ilkler', 'yapacaklar', 'sarkilar', 'muzik', 'harita', 'kavanoz', 'admin', 'bahce', 'kuponlar', 'test',
-  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet'];
+  'ozel-gunler', 'surprizler', 'selamlar', 'bumuo', 'hafiza', 'ozet', 'gunun-sorusu', 'zor-gun'];
 const ROUTES = {
   '': home, anilar: memories, mektuplar: letters, galeri: gallery, dualar: prayers, daha: more,
   'ruh-hali': moods, ilkler: firsts, yapacaklar: todos, sarkilar: songs, muzik: songs, harita: map, kavanoz: jar, admin,
   bahce: garden, kuponlar: coupons, test: quiz, 'ozel-gunler': specialDays, surprizler: surprises, selamlar: greetings,
-  fisilti: chat, bumuo: thisOrThat, hafiza: memoryGame, ozet: wraps,
+  fisilti: chat, bumuo: thisOrThat, hafiza: memoryGame, ozet: wraps, 'gunun-sorusu': dailyPage, 'zor-gun': comfort,
 };
 async function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/');
@@ -585,11 +598,14 @@ function upcomingDays(rows) {
 }
 
 async function home(v) {
-  const [logs, letterRows, locked, reasons, mems, moodRows, greets, thoughts, flowers, coupons, days, photos, prayersAll, songRows] = await Promise.all([
+  const [logs, letterRows, locked, reasons, mems, moodRows, greets, thoughts, flowers, coupons, days, photos, prayersAll, songRows, pings, comforts, dailyQ] = await Promise.all([
     api.list('prayer_logs', 30), api.list('letters'), api.rpc('locked_letters'), api.list('reasons'), api.list('memories'), api.list('moods', 50),
     api.list('greetings'), api.list('thoughts', 500), api.list('flowers'), api.list('coupons'), api.list('special_days'), api.list('photos'),
-    api.list('prayers'), api.list('songs'),
+    api.list('prayers'), api.list('songs'), api.list('support_pings', 20).catch(() => []), api.list('comfort_items', 200).catch(() => []),
+    dailyCard(),
   ]);
+  const hisPings = pings.filter(p => !isMine(p) && Date.now() - new Date(p.created_at) < 864e5);
+  const hisComforts = comforts.filter(c => !isMine(c)).length;
   const nazarList = prayersAll.filter(p => p.cat === 'nazar' && p.tr);
   const song = dailyPick(songRows);
   cache('reasons', reasons);
@@ -622,6 +638,7 @@ async function home(v) {
     ...(unread.length ? [`<a href="#/mektuplar">${ic('mail')}<span><b>${esc(partnerName())}</b>’dan okunmamış ${unread.length} mektubun var</span></a>`] : []),
     ...locked.map(l => `<a href="#/mektuplar">${ic('lock')}<span>Bir mektup ${fmtDateTime(l.open_at)}’da açılacak</span></a>`),
     ...used.map(c => `<a href="#/kuponlar">${ic('ticket')}<span><b>${esc(partnerName())}</b> “${esc(c.title)}” kuponunu kullandı <span class="muted">${ago(c.used_at)}</span></span></a>`),
+    ...hisPings.slice(0, 1).map(p => `<a href="#/fisilti" class="note-strong">${ic('heart')}<span><b>${esc(partnerName())}</b> bugün biraz zor bir gün geçiriyor${p.mood ? ` · ${esc(moodName(p.mood))}` : ''} <span class="muted">${ago(p.created_at)}</span><br><span class="small">Ona bir fısıltı gönder</span></span></a>`),
     ...(nextDay && nextDay.left <= 30 ? [`<a href="#/ozel-gunler">${ic('calendar')}<span>${esc(nextDay.title)} · ${nextDay.left === 0 ? '<b>bugün</b>' : `${nextDay.left} gün kaldı`}</span></a>`] : []),
   ];
 
@@ -674,6 +691,8 @@ async function home(v) {
       <div class="nazar-read" id="nazarRead"><p class="nazar-hint">Dokun, bir nazar duası oku</p></div>
     </section>
 
+    ${dailyQ.html}
+
     <section class="card bloom">
       ${sectionTitle('flower', 'Bugünün çiçeği', '<a class="more-link" href="#/bahce">Bahçemiz</a>')}
       <div class="bloom-row">
@@ -702,6 +721,12 @@ async function home(v) {
         ${myMood ? `<p><b>Sen</b> <span class="big">${myMood.emoji}</span> ${myMood.note ? `“${esc(myMood.note)}”` : ''} <span class="muted small">${ago(myMood.created_at)}</span></p>` : ''}
       </div>
     </section>
+
+    <a class="card hard-day" href="#/zor-gun">
+      <span class="list-ic">${ic('heart')}</span>
+      <span class="grow"><b>Bugün biraz zor mu?</b><br><span class="muted small">${hisComforts ? `${esc(partnerName())} senin için ${hisComforts} kart hazırladı` : `${esc(partnerName())}’ya haber ver ya da ona destek kartı hazırla`}</span></span>
+      ${ic('chevron', 'chev')}
+    </a>
 
     <section class="card think">
       <button class="think-btn" id="think" aria-label="Seni düşünüyorum">${ic('heart')}</button>
@@ -753,6 +778,7 @@ async function home(v) {
     r.classList.add('show');
   };
 
+  dailyQ.bind(v);
   $('#wrapReady')?.addEventListener('click', async () => { await openWrap(wrapMonth); $('#wrapReady')?.remove(); });
   $('#newsX')?.addEventListener('click', () => { state.newsClosed = true; $('#news').remove(); });
   $('#newsAll')?.addEventListener('click', openBell);
@@ -793,6 +819,7 @@ async function home(v) {
 }
 
 function floatHearts(el) {
+  if (reduceMotion()) return;
   const r = el.getBoundingClientRect();
   for (let i = 0; i < 6; i++) {
     const h = document.createElement('span');
@@ -827,11 +854,11 @@ let actCache = null;
 async function loadActivity(force = false) {
   if (!force && actCache && Date.now() - actCache.t < 20000) return actCache.items;
   const lim = 60;
-  const [mems, letterRows, locked, photos, reasons, logs, moods, firsts, todos, songs, places, thoughts, flowers, coupons, quizQ, days, totA, mScores] = await Promise.all([
+  const [mems, letterRows, locked, photos, reasons, logs, moods, firsts, todos, songs, places, thoughts, flowers, coupons, quizQ, days, totA, mScores, pingRows] = await Promise.all([
     api.list('memories', lim), api.list('letters', lim), api.rpc('locked_letters'), api.list('photos', 200), api.list('reasons', lim),
     api.list('prayer_logs', lim), api.list('moods', lim), api.list('firsts', lim), api.list('todos', lim), api.list('songs', lim),
     api.list('places', lim), api.list('thoughts', 300), api.list('flowers', 200), api.list('coupons', lim), api.rpc('quiz_for_me'), api.list('special_days', lim),
-    api.list('tot_answers', 300), api.list('memory_scores', lim),
+    api.list('tot_answers', 300), api.list('memory_scores', lim), api.list('support_pings', lim),
   ].map(p => p.catch(() => [])));
   const items = [];
   const cutoff = Date.now() - 14 * 864e5;
@@ -860,6 +887,7 @@ async function loadActivity(force = false) {
   byDay(quizQ.filter(q => q.choice === null), 'quiz', n => `sana ${n} yeni soru sordu`, '#/test');
   days.filter(his).forEach(d => add(d.created_at, 'calendar', `bir özel gün ekledi: “${esc(d.title)}”`, '#/ozel-gunler'));
   byDay(totA.filter(his), 'split', n => `“Bu mu, o mu?”da ${n} soru cevapladı`, '#/bumuo');
+  pingRows.filter(his).forEach(p => add(p.created_at, 'heart', `biraz zor bir gün geçirdiğini söyledi${p.mood ? ` · ${esc(moodName(p.mood))}` : ''}`, '#/fisilti'));
   mScores.filter(his).forEach(s => add(s.created_at, 'cards', `hafıza oyununu ${mmss(s.seconds)}’de bitirdi`, '#/hafiza'));
   items.sort((a, b) => b.at - a.at);
   actCache = { t: Date.now(), items };
@@ -887,7 +915,7 @@ async function openBell() {
 
 // ================================================================== telefon bildirimleri
 const NOTIFY_CATS = [
-  ['messages', 'Fısıltı mesajları'], ['letters', 'Mektuplar'], ['prayers', 'Senin için edilen dualar'], ['thoughts', 'Seni düşünüyorum (en fazla 3 saatte bir)'],
+  ['messages', 'Fısıltı mesajları'], ['daily', 'Günün sorusu'], ['support', 'Zor gün haberleri'], ['letters', 'Mektuplar'], ['prayers', 'Senin için edilen dualar'], ['thoughts', 'Seni düşünüyorum (en fazla 3 saatte bir)'],
   ['flowers', 'Çiçekler'], ['fun', 'Kuponlar ve test soruları'], ['shares', 'Anılar, fotoğraflar ve diğer paylaşımlar'],
 ];
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -927,13 +955,87 @@ async function syncPush() {
 const dismissed = k => { try { return localStorage.getItem('dismiss-' + k) === '1'; } catch { return false; } };
 const dismiss = k => { try { localStorage.setItem('dismiss-' + k, '1'); } catch {} };
 
-// ================================================================== gece modu
-const THEME_KEY = 'ekalpr-theme';
-const getTheme = () => { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch { return 'auto'; } };
-function applyTheme(t = getTheme()) {
-  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  $('meta[name=theme-color]')?.setAttribute('content', dark ? '#161117' : '#fbe4ec');
+// ================================================================== görünüm: gece modu + tema paketleri + hareket (hesaba bağlı)
+const PREFS_KEY = 'ekalpr-prefs';
+const PACKS = [['auto', 'Takvime göre'], ['pembe', 'Pembe'], ['ilkbahar', 'İlkbahar'], ['yildonumu', 'Yıldönümü'], ['kis', 'Kış Masalı'], ['gece', 'Gece Bahçesi'], ['minimal', 'Minimal']];
+const PACK_SW = {
+  auto: 'conic-gradient(#f4a7bf 0 25%, #9cc79c 0 50%, #cfe0f5 0 75%, #e8cfa9 0)',
+  pembe: 'linear-gradient(135deg,#f9d3df,#b4587a)', ilkbahar: 'linear-gradient(135deg,#fbe3e6,#9cc79c)',
+  yildonumu: 'linear-gradient(135deg,#f3e3c8,#a8707e)', kis: 'linear-gradient(135deg,#eef4fb,#6f8fc0)',
+  gece: 'linear-gradient(135deg,#2a2950,#b7a6ff)', minimal: 'linear-gradient(135deg,#f3efea,#9b8b86)',
+};
+const packName = k => PACKS.find(p => p[0] === k)?.[1] ?? k;
+const mq = q => { try { return matchMedia(q).matches; } catch { return false; } };
+function localPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    const legacy = localStorage.getItem('ekalpr-theme');
+    if (legacy && !p.appearance) p.appearance = legacy;
+    return p;
+  } catch { return {}; }
+}
+const myPrefs = () => ({ appearance: 'auto', pack: 'auto', motion: 'auto', ...localPrefs(), ...(state.me ? state.people[state.me.id]?.prefs ?? {} : {}) });
+// Takvime göre tema: yıl/ay dönümleri ve 14 Şubat → Yıldönümü; Aralık–Şubat → Kış; Mart–Mayıs → İlkbahar
+function autoPack(now = new Date()) {
+  const t = localISO(now).slice(0, 10), md = t.slice(5);
+  const special = [dayOf(START_D).slice(5), dayOf(TOGETHER_D).slice(5), '02-14'];
+  const monthly = now >= TOGETHER_D && t.slice(8) === dayOf(TOGETHER_D).slice(8);
+  if (special.includes(md) || monthly) return 'yildonumu';
+  const m = now.getMonth();
+  if (m === 11 || m <= 1) return 'kis';
+  if (m >= 2 && m <= 4) return 'ilkbahar';
+  return 'pembe';
+}
+const reduceMotion = () => document.documentElement.getAttribute('data-motion') === 'reduce';
+function applyTheme() {
+  const p = myPrefs(), root = document.documentElement;
+  const pack = p.pack === 'auto' ? autoPack() : p.pack;
+  const dark = pack === 'gece' || p.appearance === 'dark' || (p.appearance === 'auto' && mq('(prefers-color-scheme: dark)'));
+  const reduce = p.motion === 'reduce' || (p.motion === 'auto' && mq('(prefers-reduced-motion: reduce)')) || pack === 'minimal';
+  root.setAttribute('data-theme', dark ? 'dark' : 'light');
+  root.setAttribute('data-pack', pack);
+  reduce ? root.setAttribute('data-motion', 'reduce') : root.removeAttribute('data-motion');
+  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+  if (bg) $('meta[name=theme-color]')?.setAttribute('content', bg);
+  try { localStorage.setItem('ekalpr-resolved', JSON.stringify({ theme: dark ? 'dark' : 'light', pack, motion: reduce ? 'reduce' : '' })); } catch {}
+  snow(pack === 'kis' && !reduce);
+}
+async function savePrefs(patch) {
+  const next = { ...myPrefs(), ...patch };
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)); } catch {}
+  if (state.me && state.people[state.me.id]) {
+    state.people[state.me.id].prefs = next;
+    try { await api.rpc('set_my_prefs', { prefs: next }); } catch (er) { toast(er.message); }
+  }
+  applyTheme();
+}
+// Kış Masalı: hafif kar (sayfa arka plandayken durur)
+let snowStop = null, snowCanvas = null;
+function snow(on) {
+  if (!on) { snowStop?.(); snowStop = null; return; }
+  if (snowStop && document.body.contains(snowCanvas)) return;
+  snowStop?.();
+  const c = snowCanvas = document.createElement('canvas');
+  c.className = 'snow';
+  document.body.append(c);
+  const ctx = c.getContext('2d'), dpr = Math.min(2, devicePixelRatio || 1);
+  const flakes = Array.from({ length: 38 }, () => ({ x: Math.random(), y: Math.random(), r: .8 + Math.random() * 2, s: .25 + Math.random() * .5, d: Math.random() * 6 }));
+  let w, h, raf;
+  const size = () => { w = c.width = innerWidth * dpr; h = c.height = innerHeight * dpr; };
+  size(); addEventListener('resize', size);
+  const frame = () => {
+    raf = requestAnimationFrame(frame);
+    if (document.visibilityState !== 'visible') return;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(255,255,255,.75)' : 'rgba(150,175,215,.55)';
+    for (const f of flakes) {
+      f.y += f.s / 900; f.d += .012; f.x += Math.sin(f.d) * .0005;
+      if (f.y > 1.02) { f.y = -.02; f.x = Math.random(); }
+      ctx.beginPath(); ctx.arc(f.x * w, f.y * h, f.r * dpr, 0, 7); ctx.fill();
+    }
+  };
+  frame();
+  snowStop = () => { cancelAnimationFrame(raf); removeEventListener('resize', size); c.remove(); };
 }
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme()); } catch {}
 applyTheme();
@@ -1155,6 +1257,219 @@ async function wraps(v) {
         ${ic(done ? 'play' : 'sparkle')}</button>`;
     }).join('') : empty('sparkle', 'Sevgili olduğunuz günden itibaren burada her ayın özeti olacak')}`;
   $$('[data-w]', v).forEach(b => b.onclick = () => openWrap(+b.dataset.w));
+}
+
+// ================================================================== günün sorusu
+const DAILY_EPOCH = '2026-11-19';
+const dailyIdx = (day = todayISO()) => {
+  const n = Math.round((new Date(day + 'T12:00') - new Date(DAILY_EPOCH + 'T12:00')) / 864e5);
+  return ((n % QUESTIONS.length) + QUESTIONS.length) % QUESTIONS.length;
+};
+/** Bugünün sorusu kartı: html + olay bağlama */
+async function dailyCard(withArchiveLink = true) {
+  const day = todayISO(), q = QUESTIONS[dailyIdx(day)];
+  let st = {};
+  try { st = (await api.rpc('daily_for_me', { d: day }))?.[0] ?? {}; } catch {}
+  const P = esc(partnerName());
+  const html = `<section class="card daily" id="daily">
+    ${sectionTitle('quiz', 'Günün sorusu', withArchiveLink ? '<a class="more-link" href="#/gunun-sorusu">Arşiv</a>' : '')}
+    <p class="daily-q">${esc(q)}</p>
+    ${!st.mine ? `
+      ${st.they_answered ? `<p class="daily-wait on">${ic('check')}<span><b>${P}</b> cevapladı, seninkini bekliyor</span></p>` : ''}
+      <form id="dailyForm"><textarea name="a" rows="3" required placeholder="Cevabın…"></textarea>
+        <div class="daily-foot"><span class="muted small">İkiniz de cevaplayınca cevaplar açılır</span><button class="btn small">Gönder</button></div></form>`
+    : `<div class="daily-a me"><b>Sen</b><p>${esc(st.mine)}</p></div>
+       ${st.theirs ? `<div class="daily-a them"><b>${P}</b><p>${esc(st.theirs)}</p></div>`
+         : `<p class="daily-wait">${ic('lock')}<span><b>${P}</b>’nın cevabı, o da cevaplayınca burada açılacak</span></p>`}`}
+  </section>`;
+  const bind = root => {
+    const f = $('#dailyForm', root);
+    if (!f) return;
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const answer = f.a.value.trim(); if (!answer) return;
+      const b = $('button', f); b.disabled = true;
+      try {
+        await api.insert('daily_answers', { day, qidx: dailyIdx(day), answer });
+        hearts(10); toast(st.they_answered ? 'Cevaplarınız açıldı' : `${partnerName()} cevaplayınca birbirinizinkini göreceksiniz`);
+        const next = await dailyCard(withArchiveLink);
+        const old = $('#daily', root); old.outerHTML = next.html; next.bind(root);
+      } catch (er) { toast(er.message); b.disabled = false; }
+    };
+  };
+  return { html, bind };
+}
+async function dailyPage(v) {
+  const [card, hist] = await Promise.all([dailyCard(false), api.rpc('daily_history').catch(() => [])]);
+  const past = (hist ?? []).filter(h => h.day !== todayISO());
+  v.innerHTML = `${back()}${head('Günün sorusu', '', 'Her gün ikinize aynı soru; cevaplar ikiniz de cevaplayınca açılır')}
+    ${card.html}
+    ${past.length ? `${sectionTitle('book', 'Birbirimizi tanıdıkça')}${past.map(h => `<div class="card daily-old">
+      <p class="date">${fmtDate(h.day)}</p><p class="daily-q sm">${esc(QUESTIONS[h.qidx] ?? '')}</p>
+      <div class="daily-a me"><b>Sen</b><p>${esc(h.mine)}</p></div>
+      <div class="daily-a them"><b>${esc(partnerName())}</b><p>${esc(h.theirs)}</p></div></div>`).join('')}`
+      : `<p class="muted small center pad">İkinizin de cevapladığı sorular burada bir defter gibi birikecek.</p>`}`;
+  card.bind(v);
+}
+
+// ================================================================== kötü gün modu
+const MOODS = [['uzgun', 'Üzgünüm'], ['stres', 'Stresliyim'], ['yorgun', 'Yorgunum'], ['ozledim', 'Seni özledim'], ['konus', 'Konuşmak istiyorum'], ['yanimda', 'Sadece yanımda ol']];
+const moodName = k => MOODS.find(m => m[0] === k)?.[1] ?? 'Her zaman';
+const COMFORT_KINDS = [['note', 'Not', 'edit'], ['photo', 'Fotoğraf', 'image'], ['audio', 'Ses', 'mic'], ['memory', 'Anı', 'book'], ['letter', 'Mektup', 'mail'], ['call', 'Arama', 'phone']];
+let comfortTab = 'al', comfortMood = null;
+
+async function comfort(v) {
+  const [items, mems, letterRows, reasons, photos] = await Promise.all([
+    api.list('comfort_items', 300), api.list('memories', 300), api.list('letters', 300), api.list('reasons', 300), api.list('photos', 300),
+  ]);
+  cache('comfort_items', items);
+  const P = esc(partnerName());
+  if (comfortTab === 'al') {
+    const forMe = items.filter(i => !isMine(i));
+    const list = forMe.filter(i => !comfortMood || i.mood === 'hepsi' || i.mood === comfortMood);
+    const hisReasons = reasons.filter(r => !isMine(r));
+    const reason = hisReasons.length ? hisReasons[Math.floor(Math.random() * hisReasons.length)] : null;
+    const pool = [...photos.map(p => p.path), ...mems.flatMap(m => m.photos)];
+    const pic = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+    await loadUrls([...list.flatMap(i => [i.media]), ...list.filter(i => i.kind === 'memory').map(i => mems.find(m => m.id === i.ref_id)?.photos?.[0]), pic].filter(Boolean));
+    v.innerHTML = `<div class="comfort">${back()}
+      <div class="cf-head"><p class="cf-kicker">Buradayım</p><h1>Bugün biraz zor mu?</h1>
+        <p class="muted">Ne hissettiğini seçebilirsin; seçmek zorunda değilsin.</p></div>
+      ${segComfort()}
+      <div class="cf-moods">${MOODS.map(([k, l]) => `<button data-md="${k}" class="${comfortMood === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${list.length ? `<p class="cf-sub">${P} senin için hazırladı</p>${list.map(i => comfortCard(i, mems, letterRows)).join('')}`
+        : `<div class="card cf-empty"><p>${forMe.length ? `${P} bu his için henüz bir şey hazırlamadı; ama her zaman yanında.` : `${P} henüz destek kartı hazırlamadı. Bu arada şunlar iyi gelebilir:`}</p></div>`}
+      ${(reason || pic) ? `<p class="cf-sub">Bir de bunlar</p>
+        ${reason ? `<div class="card cf-card note"><p class="quote">“${esc(reason.text)}”</p><span class="by">— ${esc(nameOf(reason.author))}, seni neden sevdiğini yazmıştı</span></div>` : ''}
+        ${pic ? `<button class="card cf-card photo" data-pic="${esc(pic)}">${img(pic)}</button>` : ''}` : ''}
+      <div class="card cf-tell">
+        <p><b>${P}’ya haber vermek ister misin?</b><br><span class="muted small">Telefonuna “bugün biraz zor bir gün geçiriyorsun” diye bildirim gider; ayrıntı yazmaz.</span></p>
+        <button class="btn" id="cfTell">${ic('heart')}${P}’ya haber ver</button>
+      </div></div>`;
+    $$('[data-md]', v).forEach(b => b.onclick = () => { comfortMood = comfortMood === b.dataset.md ? null : b.dataset.md; rerender(); });
+    $$('[data-pic]', v).forEach(b => b.onclick = () => lightbox(b.dataset.pic));
+    $$('[data-letter]', v).forEach(b => b.onclick = () => { const l = letterRows.find(x => x.id === b.dataset.letter); if (l) openLetter(l); });
+    $$('[data-mem]', v).forEach(b => b.onclick = () => { const m = mems.find(x => x.id === b.dataset.mem); if (m?.photos?.[0]) lightbox(m.photos[0], m.title, fmtDate(m.happened_on)); else location.hash = '#/anilar'; });
+    bindAudio(v);
+    $('#cfTell').onclick = () => {
+      const m = modal(`<h2>${P}’ya haber ver</h2>
+        <p>${P}’nın telefonuna <b>“${esc(nameOf(state.me.id))} bugün biraz zor bir gün geçiriyor”</b> diye bildirim gidecek.</p>
+        ${comfortMood ? `<label class="check"><input type="checkbox" id="cfShare"> Ne hissettiğimi de görsün (“${esc(moodName(comfortMood))}”)</label>` : ''}
+        <button class="btn" id="cfSend">Gönder</button>`);
+      $('#cfSend', m).onclick = async () => {
+        try {
+          await api.insert('support_pings', { mood: $('#cfShare', m)?.checked ? comfortMood : null });
+          m.close(); toast(`${partnerName()}’ya haber verildi`);
+        } catch (er) { toast(er.message); }
+      };
+    };
+  } else {
+    const mine = items.filter(isMine);
+    await loadUrls(mine.map(i => i.media).filter(Boolean));
+    v.innerHTML = `<div class="comfort">${back()}
+      <div class="cf-head"><p class="cf-kicker">Onun için</p><h1>Zor günler için hazırla</h1>
+        <p class="muted">${P} kendini kötü hissettiğinde açacağı kartlar: bir not, sesin, bir fotoğraf, bir anı, bir mektup ya da seni arama butonu.</p></div>
+      ${segComfort()}
+      <button class="btn" id="cfAdd">${ic('plus')}Kart hazırla</button>
+      ${mine.length ? mine.map(i => `<div class="card cf-mine"><span class="list-ic">${ic(COMFORT_KINDS.find(k => k[0] === i.kind)?.[2] ?? 'heart')}</span>
+        <span class="grow"><b>${esc(COMFORT_KINDS.find(k => k[0] === i.kind)?.[1] ?? '')}</b> · <span class="muted small">${esc(moodName(i.mood))}</span><br>
+        <span class="small">${esc(i.kind === 'memory' ? (mems.find(m => m.id === i.ref_id)?.title ?? '') : i.kind === 'letter' ? (letterRows.find(l => l.id === i.ref_id)?.title ?? '') : i.body ?? (i.kind === 'audio' ? `${mmss(i.audio_secs || 0)} ses kaydı` : ''))}</span></span>
+        ${acts('comfort_items', i)}</div>`).join('') : `<p class="muted small center pad">Henüz kart hazırlamadın.</p>`}
+    </div>`;
+    $('#cfAdd').onclick = () => comfortForm(mems, letterRows);
+  }
+  $$('.seg button', v).forEach(b => b.onclick = () => { comfortTab = b.dataset.t; rerender(); });
+}
+const segComfort = () => `<div class="seg"><button data-t="al" class="${comfortTab === 'al' ? 'on' : ''}">Bana iyi gelsin</button><button data-t="hazirla" class="${comfortTab === 'hazirla' ? 'on' : ''}">Onun için hazırla</button></div>`;
+
+function comfortCard(i, mems, letterRows) {
+  const by = `<span class="by">— ${esc(nameOf(i.author))}${i.mood !== 'hepsi' ? ` · ${esc(moodName(i.mood))}` : ''}</span>`;
+  switch (i.kind) {
+    case 'note': return `<div class="card cf-card note"><p class="quote">“${esc(i.body)}”</p>${by}</div>`;
+    case 'photo': return `<div class="card cf-card"><button class="cf-photo" data-pic="${esc(i.media)}">${img(i.media)}</button>${i.body ? `<p class="quote sm">${esc(i.body)}</p>` : ''}${by}</div>`;
+    case 'audio': return `<div class="card cf-card"><div class="m-audio cf-audio" data-src="${esc(i.media)}" data-secs="${i.audio_secs || 0}"><button class="play" type="button" aria-label="Dinle">${ic('play')}</button><div class="bar"><span></span></div><span class="dur">${mmss(i.audio_secs || 0)}</span></div>${i.body ? `<p class="quote sm">${esc(i.body)}</p>` : ''}${by}</div>`;
+    case 'memory': {
+      const m = mems.find(x => x.id === i.ref_id); if (!m) return '';
+      return `<button class="card cf-card cf-link" data-mem="${m.id}"><span class="thumb">${m.photos?.[0] ? img(m.photos[0]) : ic('book')}</span><span class="grow"><b>${esc(m.title)}</b><br><span class="muted small">${fmtDate(m.happened_on)} · birlikte bir anı</span>${i.body ? `<br><span class="small">${esc(i.body)}</span>` : ''}</span></button>`;
+    }
+    case 'letter': {
+      const l = letterRows.find(x => x.id === i.ref_id); if (!l) return '';
+      return `<button class="card cf-card cf-link" data-letter="${l.id}"><span class="list-ic">${ic('mail')}</span><span class="grow"><b>${esc(l.title)}</b><br><span class="muted small">${esc(nameOf(l.author))}’dan bir mektup · dokun, aç</span></span></button>`;
+    }
+    case 'call': return `<div class="card cf-card cf-call"><a class="btn" href="tel:${esc((i.body || '').replace(/[^\d+]/g, ''))}">${ic('phone')}${esc(nameOf(i.author))}’yı ara</a><p class="muted small center">Sesini duymak iyi gelebilir</p></div>`;
+  }
+  return '';
+}
+
+function comfortForm(mems = [], letterRows = []) {
+  const myLetters = letterRows.filter(l => isMine(l) && (!l.open_at || new Date(l.open_at) <= new Date()));
+  let kind = 'note', rec = null, chunks = [], started = 0, stream = null, audio = null, tmr = null;
+  const m = modal(`<h2>Destek kartı hazırla</h2>
+    <form>
+      <label>Hangi his için?<select name="mood"><option value="hepsi">Her zaman</option>${MOODS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label>Ne hazırlamak istersin?</label>
+      <div class="cf-kinds">${COMFORT_KINDS.map(([k, l, i]) => `<button type="button" data-kind="${k}" class="${k === kind ? 'on' : ''}">${ic(i)}${l}</button>`).join('')}</div>
+      <div class="cf-fields"></div>
+      <p class="err"></p><button class="btn">Kaydet</button>
+    </form>`);
+  const form = $('form', m), box = $('.cf-fields', m);
+  const stopRec = () => { clearInterval(tmr); stream?.getTracks().forEach(t => t.stop()); };
+  const draw = () => {
+    stopRec(); audio = null;
+    box.innerHTML = {
+      note: `<label>Notun<textarea name="body" rows="4" required placeholder="Ne olursa olsun yanındayım…"></textarea></label>`,
+      photo: `<label class="file">${ic('camera')} Fotoğraf seç<input type="file" accept="image/*"></label><div class="previews fresh"></div><label>Kısa bir not<input name="body" placeholder="İsteğe bağlı"></label>`,
+      audio: `<div class="cf-rec"><button type="button" class="btn small" id="recBtn">${ic('mic')}Kaydı başlat</button><span id="recInfo" class="muted small">En fazla 3 dakika</span></div><audio id="recPrev" controls hidden></audio><label>Kısa bir not<input name="body" placeholder="İsteğe bağlı"></label>`,
+      memory: mems.length ? `<label>Hangi anı?<select name="ref">${mems.map(x => `<option value="${x.id}">${esc(x.title)} · ${fmtDate(x.happened_on)}</option>`).join('')}</select></label><label>Kısa bir not<input name="body" placeholder="İsteğe bağlı"></label>` : `<p class="muted small">Önce Anılar’a bir anı ekleyin.</p>`,
+      letter: myLetters.length ? `<label>Hangi mektup?<select name="ref">${myLetters.map(x => `<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label>` : `<p class="muted small">${esc(partnerName())}’ya yazdığın, açılmış bir mektup yok. Önce Mektuplar’dan yaz.</p>`,
+      call: `<label>Telefon numaran<input name="body" type="tel" required placeholder="+90 5…" inputmode="tel"></label><p class="muted small">Kartta “${esc(nameOf(state.me.id))}’yı ara” butonu çıkar.</p>`,
+    }[kind];
+    const fi = $('input[type=file]', box);
+    if (fi) fi.onchange = () => { $('.fresh', box).innerHTML = [...fi.files].map(f => `<img src="${URL.createObjectURL(f)}" alt="">`).join(''); };
+    const rb = $('#recBtn', box);
+    if (rb) rb.onclick = async () => {
+      if (rec?.state === 'recording') { rec.stop(); return; }
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast('Bu cihaz ses kaydını desteklemiyor');
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { return toast('Mikrofon izni verilmedi'); }
+      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+      rec = new MediaRecorder(stream, type ? { mimeType: type } : {}); chunks = []; started = Date.now();
+      rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        stopRec();
+        const mime = (rec.mimeType || type || 'audio/mp4').split(';')[0];
+        audio = { blob: new Blob(chunks, { type: mime }), secs: Math.round((Date.now() - started) / 1000), mime };
+        const pv = $('#recPrev', box); pv.src = URL.createObjectURL(audio.blob); pv.hidden = false;
+        rb.innerHTML = `${ic('mic')}Yeniden kaydet`; $('#recInfo', box).textContent = `${mmss(audio.secs)} kaydedildi`;
+      };
+      rec.start(250);
+      rb.innerHTML = `${ic('pause')}Durdur`;
+      tmr = setInterval(() => { const s = (Date.now() - started) / 1000; $('#recInfo', box).textContent = `Kaydediliyor ${mmss(s)}`; if (s >= 180) rec.stop(); }, 250);
+    };
+  };
+  $$('[data-kind]', m).forEach(b => b.onclick = () => { kind = b.dataset.kind; $$('[data-kind]', m).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  draw();
+  const _close = m.close; m.close = () => { stopRec(); _close(); };
+  m.addEventListener('click', e => { if (e.target === m || e.target.closest('.x')) stopRec(); });
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const err = $('.err', form), b = $('button.btn', form);
+    const row = { mood: form.mood.value, kind, body: form.body?.value.trim() || null };
+    try {
+      b.disabled = true;
+      if (kind === 'photo') {
+        const f = $('input[type=file]', box)?.files?.[0]; if (!f) throw new Error('Bir fotoğraf seç');
+        b.textContent = 'Yükleniyor…'; row.media = await api.upload(await compress(f));
+      }
+      if (kind === 'audio') {
+        if (!audio) throw new Error('Önce sesini kaydet');
+        b.textContent = 'Yükleniyor…';
+        row.media = await api.upload(audio.blob, audio.mime.includes('webm') ? 'webm' : 'm4a', audio.mime); row.audio_secs = audio.secs;
+      }
+      if (kind === 'memory' || kind === 'letter') { if (!form.ref) throw new Error('Seçilecek bir şey yok'); row.ref_id = form.ref.value; }
+      await api.insert('comfort_items', row);
+      m.close(); toast('Kart hazır; zor bir günde onu bekliyor'); comfortTab = 'hazirla'; rerender();
+    } catch (er) { err.textContent = er.message; b.disabled = false; b.textContent = 'Kaydet'; }
+  };
 }
 
 // ================================================================== Fısıltı (mesajlaşma)
@@ -1679,7 +1994,7 @@ async function prayers(v) {
 // ================================================================== daha
 async function more(v) {
   const groups = [
-    ['Her gün', [['fisilti', 'chat', 'Fısıltı', 'Sadece ikimizin sohbeti'], ['bahce', 'flower', 'Bahçemiz', 'Her gün bir çiçek'], ['selamlar', 'sun', 'Günaydın & iyi geceler', 'Saatine göre görünen notlar'], ['ruh-hali', 'smile', 'Ruh halimiz', 'Bugün nasılız']]],
+    ['Her gün', [['gunun-sorusu', 'quiz', 'Günün sorusu', 'Cevaplar ikiniz de cevaplayınca açılır'], ['zor-gun', 'heart', 'Bugün biraz zor', 'Kötü gün modu · destek kartları'], ['fisilti', 'chat', 'Fısıltı', 'Sadece ikimizin sohbeti'], ['bahce', 'flower', 'Bahçemiz', 'Her gün bir çiçek'], ['selamlar', 'sun', 'Günaydın & iyi geceler', 'Saatine göre görünen notlar'], ['ruh-hali', 'smile', 'Ruh halimiz', 'Bugün nasılız']]],
     ['Oyunlar', [['bumuo', 'split', 'Bu mu, o mu?', 'Ne kadar uyumluyuz'], ['hafiza', 'cards', 'Hafıza oyunu', 'Fotoğraflarımızla, rekor kır'], ['test', 'quiz', 'Beni ne kadar tanıyorsun?', 'Birbirinize sorular']]],
     ['Sürprizler', [['surprizler', 'gift', 'Açılış sürprizi', 'Siteyi açınca karşısına çıkar'], ['kuponlar', 'ticket', 'Aşk kuponları', 'Kendi yazdığınız kuponlar']]],
     ['Birlikte', [['ozet', 'sparkle', 'Aylık özetimiz', 'Her ayın hikâyesi'], ['muzik', 'music', 'Müziğimiz', 'Ortak playlist ve şarkılarımız'], ['ozel-gunler', 'calendar', 'Özel günler', 'Geri sayımlar'], ['ilkler', 'flag', 'İlklerimiz', 'Unutulmayacak ilkler'], ['yapacaklar', 'check', 'Yapacaklarımız', 'Hayal listemiz'], ['harita', 'pin', 'Haritamız', 'Gittiğimiz yerler'], ['kavanoz', 'jar', 'Sebep kavanozu', 'Seni neden seviyorum']]],
@@ -2113,8 +2428,13 @@ function settings() {
     <div class="card soft">
       ${sectionTitle('sun', 'Görünüm')}
       <div class="theme-pick">${[['auto', 'phone', 'Otomatik'], ['light', 'sun', 'Açık'], ['dark', 'moon', 'Koyu']].map(([k, i, l]) =>
-        `<button data-th="${k}" class="${getTheme() === k ? 'on' : ''}">${ic(i)}${l}</button>`).join('')}</div>
-      <p class="muted small" style="margin:8px 0 0">Otomatik: telefonun gece/gündüz ayarına uyar.</p>
+        `<button data-th="${k}" class="${myPrefs().appearance === k ? 'on' : ''}">${ic(i)}${l}</button>`).join('')}</div>
+      <p class="muted small" style="margin:8px 0 14px">Otomatik: telefonun gece/gündüz ayarına uyar.</p>
+      <p class="label-sm">Tema</p>
+      <div class="pack-pick">${PACKS.map(([k, l]) => `<button data-pk="${k}" class="${myPrefs().pack === k ? 'on' : ''}"><span class="sw" style="background:${PACK_SW[k]}"></span>${l}</button>`).join('')}</div>
+      <p class="muted small" style="margin:8px 0 12px">Takvime göre: Aralık–Şubat Kış Masalı, Mart–Mayıs İlkbahar; ay dönümlerinizde, 7 ve 15 Kasım’da ve 14 Şubat’ta Yıldönümü. Bugün: <b>${packName(autoPack())}</b></p>
+      <label class="check"><input type="checkbox" id="motionChk" ${reduceMotion() ? 'checked' : ''}> Hareketi azalt <span class="muted small">(animasyonlar ve kalp yağmuru kapanır)</span></label>
+      <p class="muted small" style="margin:6px 0 0">Bu ayarlar hesabına kayıtlı; telefon değişse de seninle gelir.</p>
     </div>
     <div class="card soft" id="lockBox"></div>
     <div class="card soft" id="pushBox">
@@ -2135,10 +2455,14 @@ function settings() {
 
   // görünüm
   $$('[data-th]', m).forEach(b => b.onclick = () => {
-    try { localStorage.setItem(THEME_KEY, b.dataset.th); } catch {}
-    applyTheme(b.dataset.th);
+    savePrefs({ appearance: b.dataset.th });
     $$('[data-th]', m).forEach(x => x.classList.toggle('on', x === b));
   });
+  $$('[data-pk]', m).forEach(b => b.onclick = () => {
+    savePrefs({ pack: b.dataset.pk });
+    $$('[data-pk]', m).forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('#motionChk', m).onchange = e => savePrefs({ motion: e.target.checked ? 'reduce' : 'auto' });
   // uygulama kilidi
   const renderLock = () => {
     const c = lockCfg(), box = $('#lockBox', m);
@@ -2250,7 +2574,7 @@ if ('serviceWorker' in navigator && !DEMO) {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       try { navigator.clearAppBadge?.(); } catch {}
-      if (state.me) { refreshBell(); refreshChatBadge(); if (Date.now() - urlsAt > 5 * 3600e3) rerender(); }
+      if (state.me) { applyTheme(); refreshBell(); refreshChatBadge(); if (Date.now() - urlsAt > 5 * 3600e3) rerender(); }
     }
   });
 }

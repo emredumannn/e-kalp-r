@@ -71,9 +71,10 @@ const CATEGORY: Record<string, string> = {
   memories: 'shares', photos: 'shares', reasons: 'shares', moods: 'shares', firsts: 'shares',
   todos: 'shares', songs: 'shares', places: 'shares', special_days: 'shares',
   messages: 'messages', memory_scores: 'fun', letters_open: 'letters',
+  daily_answers: 'daily', support_pings: 'support',
 };
 // Aynı türden bildirimler arasında en az bu kadar saniye
-const THROTTLE: Record<string, number> = { photos: 120, thoughts: 3 * 3600, moods: 1800, prayer_logs: 300, messages: 8, memory_scores: 600 };
+const THROTTLE: Record<string, number> = { photos: 120, thoughts: 3 * 3600, moods: 1800, prayer_logs: 300, messages: 8, memory_scores: 600, support_pings: 600 };
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 const short = (s: string | null | undefined, n = 90) => !s ? '' : s.length > n ? s.slice(0, n - 1) + '…' : s;
 const fmtDate = (d: string) => new Date(d).toLocaleString('tr-TR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
@@ -103,6 +104,10 @@ function message(kind: string, r: Record<string, any>, name: (id: string) => str
     case 'special_days': return { title: `${who} bir özel gün ekledi`, body: short(r.title), url: '#/ozel-gunler' };
     case 'messages': return { title: who, body: r.body ? short(r.body, 140) : r.photo ? 'Bir fotoğraf gönderdi' : 'Sesli mesaj gönderdi', url: '#/fisilti' };
     case 'memory_scores': return { title: `${who} hafıza oyununu ${mmss(r.seconds)}’de bitirdi`, body: 'Rekoru kırabilir misin?', url: '#/hafiza' };
+    // Cevabın kendisi asla bildirimde görünmez
+    case 'daily_answers': return { title: `${who} günün sorusunu cevapladı`, body: 'Sen de cevapla; ikiniz de cevaplayınca cevaplar açılır', url: '#/' };
+    // Hassas ayrıntı yok: ruh hali bildirimde yazılmaz
+    case 'support_pings': return { title: `${who} bugün biraz zor bir gün geçiriyor`, body: 'Ona bir fısıltı gönder ya da ara', url: '#/fisilti' };
     case 'test': return { to: r.author, title: 'Bildirimler çalışıyor', body: 'Artık birbirinizden haber alacaksınız.', url: '#/' };
   }
   return null;
@@ -125,6 +130,11 @@ Deno.serve(async req => {
   const to = msg.to ?? people?.find(p => p.id !== actor)?.id;
   if (!to || (table !== 'test' && to === actor)) return json({ skipped: 'no recipient' });
 
+  // Günün sorusu: karşı taraf zaten cevapladıysa "cevaplarınız açıldı" de
+  if (table === 'daily_answers') {
+    const { count } = await db.from('daily_answers').select('id', { count: 'exact', head: true }).eq('author', to).eq('day', record.day);
+    if (count) msg.body = 'Cevaplarınız açıldı, birbirinizinkini görün';
+  }
   const target = people?.find(p => p.id === to);
   if (table !== 'test' && target?.notify?.[CATEGORY[table]] === false) return json({ skipped: 'muted' });
 

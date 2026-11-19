@@ -31,6 +31,9 @@ export const ORDER = {
   tot_answers: ['created_at', true],
   memory_scores: ['created_at', false],
   push_subscriptions: ['created_at', false],
+  daily_answers: ['day', false],
+  comfort_items: ['created_at', false],
+  support_pings: ['created_at', false],
 };
 
 function fail(error) {
@@ -172,6 +175,17 @@ const store = {
   ],
   tot_questions: [],
   push_subscriptions: [],
+  daily_answers: [
+    { id: 'da1', author: RABIA, day: localDay(0), qidx: 0, answer: 'Gülüşün. Kalabalığın içinde bile hemen fark ettim.', created_at: day(-0.1) },
+    { id: 'da2', author: EMRE, day: localDay(-1), qidx: 0, answer: 'Gözlerindeki ışık.', created_at: day(-1) },
+    { id: 'da3', author: RABIA, day: localDay(-1), qidx: 0, answer: 'Sesin ve o utangaç gülümsemen.', created_at: day(-1) },
+  ],
+  comfort_items: [
+    { id: 'cf1', author: RABIA, mood: 'hepsi', kind: 'note', body: 'Ne olursa olsun yanındayım. Derin bir nefes al, bugün de geçecek ve ben hep burada olacağım.', media: null, audio_secs: null, ref_id: null, created_at: day(-2) },
+    { id: 'cf2', author: RABIA, mood: 'ozledim', kind: 'memory', body: 'Bu günü hatırla', media: null, audio_secs: null, ref_id: 'm1', created_at: day(-2) },
+    { id: 'cf3', author: RABIA, mood: 'konus', kind: 'call', body: '+90 500 000 00 00', media: null, audio_secs: null, ref_id: null, created_at: day(-2) },
+  ],
+  support_pings: [],
   tot_answers: [
     { id: 'ta1', author: RABIA, qkey: 'b0', pick: 0, created_at: day(-1) },
     { id: 'ta2', author: RABIA, qkey: 'b1', pick: 1, created_at: day(-1) },
@@ -183,6 +197,15 @@ const store = {
 function localDay(n) { const d = new Date(Date.now() + n * 864e5); return new Date(+d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
 const DEMO_RPC = {
   touch_seen: () => day(-1.5),
+  set_my_prefs: ({ prefs }) => { store.profiles[0].prefs = prefs; },
+  daily_for_me: ({ d }) => {
+    const m = store.daily_answers.find(a => a.author === EMRE && a.day === d), t = store.daily_answers.find(a => a.author !== EMRE && a.day === d);
+    return [{ mine: m?.answer ?? null, theirs: m ? t?.answer ?? null : null, they_answered: !!t }];
+  },
+  daily_history: () => store.daily_answers.filter(a => a.author === EMRE).map(m => {
+    const t = store.daily_answers.find(a => a.author !== EMRE && a.day === m.day);
+    return t ? { day: m.day, qidx: m.qidx, mine: m.answer, theirs: t.answer } : null;
+  }).filter(Boolean),
   toggle_heart: ({ mid }) => { const m = store.messages.find(x => x.id === mid && x.author !== EMRE); if (m) m.hearted = !m.hearted; return m?.hearted ?? null; },
   mark_messages_read: () => { store.messages.forEach(m => { if (m.author !== EMRE && !m.read_at) m.read_at = new Date().toISOString(); }); },
   set_my_notify: ({ prefs }) => { store.profiles[0].notify = prefs; },
@@ -218,6 +241,7 @@ const demo = {
     if (table === 'letters') rows = rows.filter(l => l.author === EMRE || !l.open_at || new Date(l.open_at) <= new Date());
     if (table === 'quiz_questions') rows = rows.filter(q => q.author === EMRE);
     if (table === 'surprises') rows = rows.filter(s => s.author === EMRE || s.recipient === EMRE);
+    if (table === 'daily_answers') rows = rows.filter(a => a.author === EMRE);
     const cmp = (a, b) => (typeof a[col] === 'number' ? a[col] - b[col] : String(a[col] ?? '').localeCompare(String(b[col] ?? '')));
     return rows.sort((a, b) => asc ? cmp(a, b) : cmp(b, a));
   },

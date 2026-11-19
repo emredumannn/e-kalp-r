@@ -20,9 +20,16 @@
     // Tema: sayfa çizilmeden önce uygula (beyaz yanıp sönme olmasın)
     (function () {
       try {
-        var t = localStorage.getItem('ekalpr-theme') || 'auto';
-        var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        var r = JSON.parse(localStorage.getItem('ekalpr-resolved') || 'null');
+        var el = document.documentElement;
+        if (r) {
+          el.setAttribute('data-theme', r.theme); el.setAttribute('data-pack', r.pack);
+          if (r.motion) el.setAttribute('data-motion', r.motion);
+        } else {
+          var t = localStorage.getItem('ekalpr-theme') || 'auto';
+          var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+          el.setAttribute('data-theme', dark ? 'dark' : 'light');
+        }
       } catch (e) {}
     })();
   </script>
@@ -30,6 +37,7 @@
   <link rel="stylesheet" href="css/sohbet-oyun.css">
   <link rel="stylesheet" href="css/gece.css">
   <link rel="stylesheet" href="css/ozet-kilit.css">
+  <link rel="stylesheet" href="css/temalar.css">
 </head>
 <body>
   <div class="loading"><span class="heart beat">❤</span></div>

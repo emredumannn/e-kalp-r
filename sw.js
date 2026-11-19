@@ -1,9 +1,9 @@
 // Uygulama kabuğunu önbellekler. Supabase istekleri her zaman ağdan gider.
 // Siteyi güncellediğinde VERSION'u bir artır.
-const VERSION = 'ekalpr-v12';
+const VERSION = 'ekalpr-v13';
 const SHELL = [
   './', './index.html', './css/style.css', './manifest.webmanifest',
-  './js/app.js', './js/api.js', './js/config.js', './js/dualar.js', './js/icons.js', './js/oyunlar.js', './css/sohbet-oyun.css', './css/gece.css', './css/ozet-kilit.css',
+  './js/app.js', './js/api.js', './js/config.js', './js/dualar.js', './js/icons.js', './js/oyunlar.js', './css/sohbet-oyun.css', './css/gece.css', './css/ozet-kilit.css', './css/temalar.css', './js/sorular.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
 
